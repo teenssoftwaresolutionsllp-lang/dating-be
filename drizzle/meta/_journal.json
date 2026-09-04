@@ -15,6 +15,13 @@
       "when": 1788345194761,
       "tag": "0001_whole_captain_britain",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788512936790,
+      "tag": "0002_melted_maverick",
+      "breakpoints": true
     }
   ]
 }

@@ -39,25 +39,15 @@ export const users = pgTable("users", {
     .notNull()
     .default("user"),
 
-  isVerified: boolean("is_verified")
-    .notNull()
-    .default(false),
+  isVerified: boolean("is_verified").notNull().default(false),
 
-  isActive: boolean("is_active")
-    .notNull()
-    .default(true),
+  isActive: boolean("is_active").notNull().default(true),
 
-  profileCompleted: boolean("profile_completed")
-    .notNull()
-    .default(false),
+  profileCompleted: boolean("profile_completed").notNull().default(false),
 
-  createdAt: timestamp("created_at")
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 
-  updatedAt: timestamp("updated_at")
-    .notNull()
-    .defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
 export type User = typeof users.$inferSelect;

@@ -6,7 +6,7 @@ import { SOCIAL_PROVIDERS } from "../config/constants";
 export class AuthController {
   /**
    * GET /api/v1/auth/languages
-   * Screen 1: Get supported display languages
+   * Screen 1: Get supported display- languages
    */
   static async getLanguages(_req: Request, res: Response): Promise<Response> {
     const languages = AuthService.getSupportedLanguages();

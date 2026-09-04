@@ -2,15 +2,21 @@
   "name": "dating-be",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "dist/server.js",
   "scripts": {
-  "start": "node src/server.js",
-  "dev": "nodemon src/server.js",
-  "db:generate": "drizzle-kit generate",
-  "db:migrate": "drizzle-kit migrate",
-  "db:push": "drizzle-kit push",
-  "db:studio": "drizzle-kit studio"
-},
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "tsx watch src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx src/test-auth-flow.ts",
+    "test:api": "tsx src/test-api-validation.ts",
+    "test:live": "tsx src/test-live-auth.ts",
+    "test:db": "tsx src/test-db.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/teenssoftwaresolutionsllp-lang/dating-be.git"
@@ -35,7 +41,17 @@
     "pg": "^8.23.0"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/morgan": "^1.9.10",
+    "@types/node": "^26.4.1",
+    "@types/pg": "^8.23.1",
     "drizzle-kit": "^0.31.10",
-    "nodemon": "^3.1.14"
+    "nodemon": "^3.1.14",
+    "tsup": "^8.5.1",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
   }
 }

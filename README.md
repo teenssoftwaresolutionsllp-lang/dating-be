@@ -1,81 +1,46 @@
 # 💕 Dating App — Backend
 
-> **Scalable Dating Application Backend** built with **Node.js + Express.js + Drizzle ORM + PostgreSQL**.
+> **Scalable Dating Application Backend** built with **TypeScript + Node.js + Express.js + Drizzle ORM + PostgreSQL**.
 >
 > The backend provides authentication, user profiles, interests, preferences, likes, matches, messaging, subscriptions, notifications, safety features, and Admin APIs.
 
 ---
 
-## 📦 Installation
+## 📦 Installation & Setup
 
-### Node.js
-
-Check Node.js:
+### Install Dependencies
 
 ```bash
-node --version
+npm install
 ```
 
-Check npm:
+### TypeScript Development Dependencies
 
 ```bash
-npm --version
-```
-
----
-
-### Express.js
-
-```bash
-npm install express cors helmet morgan
+npm install -D typescript tsx @types/node @types/express @types/cors @types/jsonwebtoken @types/bcryptjs @types/morgan @types/pg drizzle-kit
 ```
 
 ---
 
-### Authentication
+## 🚀 Running the Project
 
+### Development Server (with hot reload)
 ```bash
-npm install bcryptjs jsonwebtoken
+npm run dev
 ```
 
----
-
-### Validation & Utilities
-
+### Type Checking & Build
 ```bash
-npm install zod uuid
+npm run typecheck
+npm run build
 ```
 
----
-
-### PostgreSQL + Drizzle ORM
-
+### Run Tests
 ```bash
-npm install drizzle-orm pg dotenv
-```
-
----
-
-### Development Dependencies
-
-```bash
-npm install -D drizzle-kit nodemon
-```
-
----
-
-## 📦 Complete Installation — One Command
-
-### Production Dependencies
-
-```bash
-npm install express cors helmet morgan bcryptjs jsonwebtoken zod uuid drizzle-orm pg dotenv
-```
-
-### Development Dependencies
-
-```bash
-npm install -D drizzle-kit nodemon
+npm test            # Logic & unit tests
+npm run test:api    # API validation tests
+npm run test:live   # Live PostgreSQL flow tests
+npm run test:db     # Database connectivity test
 ```
 
 ---
@@ -87,93 +52,71 @@ dating-be/
 ├── src/
 │   │
 │   ├── config/
-│   │   └── database.js                    ← Database/application configuration
+│   │   ├── constants.ts                   ← Application constants & languages
+│   │   └── database.ts                    ← Database/application configuration
 │   │
 │   ├── db/
-│   │   ├── index.js                       ← Database connection (Drizzle + pg Pool)
-│   │   ├── seed.js                        ← Seed file for development/master data
+│   │   ├── index.ts                       ← Database connection (Drizzle + pg Pool)
+│   │   ├── migrate.ts                     ← Database migration runner
 │   │   │
 │   │   └── schema/
-│   │       ├── index.js                   ← Re-exports all schemas (single entry point)
-│   │       ├── users.js                   ← User accounts and authentication data
-│   │       ├── profiles.js                ← User profile information
-│   │       ├── photos.js                  ← User profile photos
-│   │       ├── interests.js               ← Master interest data
-│   │       ├── user-interests.js          ← User ↔ Interest relationships
-│   │       ├── preferences.js             ← Dating preferences
-│   │       ├── likes.js                   ← Likes, dislikes and super likes
-│   │       ├── matches.js                 ← Mutual matches
-│   │       ├── messages.js                ← Chat messages
-│   │       ├── subscriptions.js           ← Premium subscriptions
-│   │       ├── notifications.js           ← User notifications
-│   │       ├── reports.js                 ← User/profile reports
-│   │       └── blocks.js                  ← Blocked users
+│   │       ├── index.ts                   ← Re-exports all schemas & inferred types
+│   │       ├── users.ts                   ← User accounts and authentication schema
+│   │       ├── otp-verifications.ts       ← OTP verification records
+│   │       ├── user-sessions.ts           ← Active JWT user sessions
+│   │       └── social-accounts.ts         ← Social OAuth login records
 │   │
 │   ├── controllers/
-│   │   ├── auth.controller.js             ← Register / Login / Authentication
-│   │   ├── user.controller.js             ← User management
-│   │   ├── profile.controller.js          ← Profile management
-│   │   ├── photo.controller.js            ← Photo management
-│   │   ├── interest.controller.js         ← Interest management
-│   │   ├── preference.controller.js       ← Dating preferences
-│   │   ├── like.controller.js             ← Like / Dislike / Super Like
-│   │   ├── match.controller.js            ← Match management
-│   │   ├── message.controller.js          ← Messaging
-│   │   ├── subscription.controller.js     ← Subscription management
-│   │   ├── notification.controller.js     ← Notifications
-│   │   └── admin.controller.js            ← Admin operations
+│   │   ├── auth.controller.ts             ← Register / Login / Authentication
+│   │   ├── user.controller.ts             ← User management
+│   │   ├── profile.controller.ts          ← Profile management
+│   │   ├── match.controller.ts            ← Match management
+│   │   ├── message.controller.ts          ← Messaging
+│   │   └── admin.controller.ts            ← Admin operations
 │   │
 │   ├── middleware/
-│   │   ├── auth.middleware.js             ← JWT authentication
-│   │   ├── admin.middleware.js            ← Admin authorization
-│   │   ├── validation.middleware.js       ← Request validation
-│   │   └── error.middleware.js            ← Global error handling
+│   │   ├── auth.middleware.ts             ← JWT authentication & req.user attachment
+│   │   ├── admin.middleware.ts            ← Admin authorization
+│   │   ├── validation.middleware.ts       ← Request body & parameter validation
+│   │   └── error.middleware.ts            ← Async & global error handling
 │   │
 │   ├── routes/
-│   │   ├── auth.routes.js                 ← Authentication APIs
-│   │   ├── user.routes.js                 ← User APIs
-│   │   ├── profile.routes.js              ← Profile APIs
-│   │   ├── photo.routes.js                ← Photo APIs
-│   │   ├── interest.routes.js             ← Interest APIs
-│   │   ├── preference.routes.js           ← Preference APIs
-│   │   ├── like.routes.js                 ← Like APIs
-│   │   ├── match.routes.js                ← Match APIs
-│   │   ├── message.routes.js              ← Messaging APIs
-│   │   ├── subscription.routes.js         ← Subscription APIs
-│   │   ├── notification.routes.js         ← Notification APIs
-│   │   ├── report.routes.js               ← Report APIs
-│   │   ├── block.routes.js                ← Block APIs
-│   │   └── admin.routes.js                ← Admin APIs
+│   │   ├── auth.routes.ts                 ← Authentication & onboarding APIs
+│   │   ├── user.routes.ts                 ← User APIs
+│   │   ├── profile.routes.ts              ← Profile APIs
+│   │   ├── match.routes.ts                ← Match APIs
+│   │   ├── message.routes.ts              ← Messaging APIs
+│   │   └── admin.routes.ts                ← Admin APIs
 │   │
 │   ├── services/
-│   │   ├── auth.service.js                ← Authentication business logic
-│   │   ├── user.service.js                ← User business logic
-│   │   ├── profile.service.js             ← Profile business logic
-│   │   ├── match.service.js               ← Matching business logic
-│   │   ├── message.service.js             ← Messaging business logic
-│   │   ├── notification.service.js        ← Notification business logic
-│   │   └── admin.service.js               ← Admin business logic
+│   │   ├── auth.service.ts                ← Authentication & OTP business logic
+│   │   ├── user.service.ts                ← User business logic
+│   │   ├── profile.service.ts             ← Profile business logic
+│   │   ├── match.service.ts               ← Matching business logic
+│   │   └── message.service.ts             ← Messaging business logic
+│   │
+│   ├── types/
+│   │   └── index.ts                       ← Centralized TypeScript interfaces & models
 │   │
 │   ├── utils/
-│   │   ├── jwt.js                         ← JWT generation / verification
-│   │   ├── password.js                    ← Password hashing / comparison
-│   │   ├── validation.js                  ← Validation helpers
-│   │   └── response.js                    ← Standard API responses
+│   │   ├── jwt.ts                         ← JWT generation / verification
+│   │   ├── otp.ts                         ← 4-digit OTP generation & SMS simulation
+│   │   ├── password.ts                    ← Password hashing / comparison
+│   │   └── response.ts                    ← Standard API response formatter
 │   │
-│   ├── app.js                             ← Express application configuration
-│   ├── server.js                          ← Server entry point
-│   └── test-db.js                         ← Database connection test
+│   ├── app.ts                             ← Express application setup & middleware
+│   ├── server.ts                          ← Server entry point
+│   ├── test-auth-flow.ts                  ← Logic & unit tests
+│   ├── test-api-validation.ts             ← API route validation tests
+│   ├── test-live-auth.ts                  ← Live DB auth flow tests
+│   └── test-db.ts                         ← Database connection test
 │
-├── drizzle/
-│   └── migrations/                        ← Generated Drizzle migration files
-│
-├── uploads/
-│   └── .gitkeep                           ← User-uploaded files directory
-│
+├── drizzle/                               ← Drizzle SQL migrations & snapshots
 ├── .env                                   ← Environment variables
 ├── .env.example                           ← Environment variable template
-├── .gitignore                             ← Git ignored files
-├── drizzle.config.js                     ← Drizzle Kit configuration
+├── .gitignore                             ← Git ignored files (including dist/)
+├── tsconfig.json                          ← TypeScript configuration
+├── drizzle.config.ts                      ← Drizzle Kit TypeScript configuration
 ├── package.json                           ← Dependencies and npm scripts
 ├── package-lock.json                      ← Locked dependency versions
 └── README.md                              ← Project documentation
@@ -185,22 +128,20 @@ dating-be/
 
 | Layer             | Technology           | Purpose                     |
 | ----------------- | -------------------- | --------------------------- |
-| Runtime           | Node.js              | JavaScript runtime          |
+| Runtime           | Node.js              | JavaScript / TS runtime     |
+| Language          | TypeScript           | Strict static typing        |
 | Framework         | Express.js           | REST API framework          |
-| Language          | JavaScript           | Backend development         |
 | Database          | PostgreSQL           | Primary relational database |
 | ORM               | Drizzle ORM          | Type-safe database queries  |
 | Migration Tool    | Drizzle Kit          | Schema migrations           |
 | PostgreSQL Driver | node-postgres (`pg`) | PostgreSQL connection       |
-| Authentication    | JWT                  | Token-based authentication  |
+| Authentication    | JWT (`jsonwebtoken`) | Token-based authentication  |
 | Password Security | bcryptjs             | Password hashing            |
-| Validation        | Zod                  | Request validation          |
 | Security          | Helmet               | HTTP security headers       |
 | CORS              | cors                 | Cross-origin requests       |
 | Logging           | Morgan               | HTTP request logging        |
 | Configuration     | dotenv               | Environment variables       |
-| Development       | Nodemon              | Automatic server restart    |
-| Utilities         | UUID                 | Unique identifiers          |
+| TS Execution/Dev  | tsx                  | TypeScript dev runtime      |
 
 ---
 

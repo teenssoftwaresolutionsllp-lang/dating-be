@@ -1,4 +1,4 @@
-CREATE TABLE "otp_verifications" (
+cfio00ucCREATE TABLE "otp_verifications" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"phone" varchar(20),
 	"country_code" varchar(10) DEFAULT '+91',

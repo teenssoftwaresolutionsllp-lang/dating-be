@@ -35,3 +35,6 @@ export const messages = pgTable(
     index("messages_created_at_idx").on(table.createdAt),
   ],
 );
+
+export type Message = typeof messages.$inferSelect;
+export type NewMessage = typeof messages.$inferInsert;

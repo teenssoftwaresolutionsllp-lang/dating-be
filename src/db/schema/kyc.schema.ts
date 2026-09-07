@@ -20,3 +20,6 @@ export const kycVerifications = pgTable("kyc_verifications", {
     .notNull()
     .defaultNow(),
 });
+
+export type KycVerification = typeof kycVerifications.$inferSelect;
+export type NewKycVerification = typeof kycVerifications.$inferInsert;

@@ -24,3 +24,6 @@ export const subscriptions = pgTable(
     index("subscriptions_plan_id_idx").on(table.planId),
   ],
 );
+
+export type Subscription = typeof subscriptions.$inferSelect;
+export type NewSubscription = typeof subscriptions.$inferInsert;

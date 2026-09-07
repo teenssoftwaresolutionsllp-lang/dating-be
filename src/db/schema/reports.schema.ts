@@ -31,3 +31,6 @@ export const reports = pgTable(
     index("reports_reported_user_id_idx").on(table.reportedUserId),
   ],
 );
+
+export type Report = typeof reports.$inferSelect;
+export type NewReport = typeof reports.$inferInsert;

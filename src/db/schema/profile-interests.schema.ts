@@ -15,3 +15,6 @@ export const profileInterests = pgTable(
   },
   (table) => [primaryKey({ columns: [table.profileId, table.interestId] })],
 );
+
+export type ProfileInterest = typeof profileInterests.$inferSelect;
+export type NewProfileInterest = typeof profileInterests.$inferInsert;

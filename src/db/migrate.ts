@@ -7,7 +7,7 @@ import { pool } from "./index";
 
 const migrationsFolder = resolve(
   dirname(fileURLToPath(import.meta.url)),
-  "../../drizzle",
+  "migrations",
 );
 
 const runMigration = async () => {

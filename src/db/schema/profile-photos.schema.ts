@@ -33,3 +33,6 @@ export const profilePhotos = pgTable(
   },
   (table) => [index("profile_photos_user_id_idx").on(table.userId)],
 );
+
+export type ProfilePhoto = typeof profilePhotos.$inferSelect;
+export type NewProfilePhoto = typeof profilePhotos.$inferInsert;

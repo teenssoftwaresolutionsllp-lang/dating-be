@@ -15,3 +15,6 @@ export const profileLanguages = pgTable(
   },
   (table) => [primaryKey({ columns: [table.profileId, table.languageId] })],
 );
+
+export type ProfileLanguage = typeof profileLanguages.$inferSelect;
+export type NewProfileLanguage = typeof profileLanguages.$inferInsert;

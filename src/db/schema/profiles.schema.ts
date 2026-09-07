@@ -29,3 +29,6 @@ export const profiles = pgTable("profiles", {
     .notNull()
     .defaultNow(),
 });
+
+export type Profile = typeof profiles.$inferSelect;
+export type NewProfile = typeof profiles.$inferInsert;

@@ -14,3 +14,6 @@ export const notificationSettings = pgTable("notification_settings", {
   pushEnabled: boolean("push_enabled").notNull().default(true),
   emailEnabled: boolean("email_enabled").notNull().default(true),
 });
+
+export type NotificationSetting = typeof notificationSettings.$inferSelect;
+export type NewNotificationSetting = typeof notificationSettings.$inferInsert;

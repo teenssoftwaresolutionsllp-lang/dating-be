@@ -17,6 +17,7 @@ export const userSessions = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     refreshTokenHash: text("refresh_token_hash").notNull().unique(),
     deviceInfo: text("device_info"),
+    revoked_at: timestamp("revoked_at", { withTimezone: true }),
     ipAddress: varchar("ip_address", { length: 45 }),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })

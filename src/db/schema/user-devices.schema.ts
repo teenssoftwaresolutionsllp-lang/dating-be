@@ -24,3 +24,6 @@ export const userDevices = pgTable(
   },
   (table) => [index("user_devices_user_id_idx").on(table.userId)],
 );
+
+export type UserDevice = typeof userDevices.$inferSelect;
+export type NewUserDevice = typeof userDevices.$inferInsert;

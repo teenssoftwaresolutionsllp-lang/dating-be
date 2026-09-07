@@ -21,3 +21,6 @@ export const blocks = pgTable(
     index("blocks_blocked_user_id_idx").on(table.blockedUserId),
   ],
 );
+
+export type Block = typeof blocks.$inferSelect;
+export type NewBlock = typeof blocks.$inferInsert;

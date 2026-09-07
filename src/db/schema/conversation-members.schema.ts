@@ -26,3 +26,6 @@ export const conversationMembers = pgTable(
     index("conversation_members_user_id_idx").on(table.userId),
   ],
 );
+
+export type ConversationMember = typeof conversationMembers.$inferSelect;
+export type NewConversationMember = typeof conversationMembers.$inferInsert;

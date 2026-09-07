@@ -23,3 +23,6 @@ export const datingPreferences = pgTable("dating_preferences", {
   communityPreference: varchar("community_preference", { length: 30 }),
   verifiedOnly: boolean("verified_only").notNull().default(false),
 });
+
+export type DatingPreference = typeof datingPreferences.$inferSelect;
+export type NewDatingPreference = typeof datingPreferences.$inferInsert;

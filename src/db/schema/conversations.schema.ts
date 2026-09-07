@@ -14,3 +14,6 @@ export const conversations = pgTable("conversations", {
     .notNull()
     .defaultNow(),
 });
+
+export type Conversation = typeof conversations.$inferSelect;
+export type NewConversation = typeof conversations.$inferInsert;

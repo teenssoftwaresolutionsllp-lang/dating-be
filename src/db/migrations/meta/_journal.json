@@ -22,6 +22,20 @@
       "when": 1788512936790,
       "tag": "0002_melted_maverick",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788722627758,
+      "tag": "0003_drop_legacy_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788724343781,
+      "tag": "0004_puzzling_franklin_richards",
+      "breakpoints": true
     }
   ]
 }

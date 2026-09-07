@@ -24,3 +24,6 @@ export const messageReads = pgTable(
     index("message_reads_user_id_idx").on(table.userId),
   ],
 );
+
+export type MessageRead = typeof messageReads.$inferSelect;
+export type NewMessageRead = typeof messageReads.$inferInsert;

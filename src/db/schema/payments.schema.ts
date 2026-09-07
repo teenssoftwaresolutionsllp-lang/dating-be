@@ -35,3 +35,6 @@ export const payments = pgTable(
     index("payments_subscription_id_idx").on(table.subscriptionId),
   ],
 );
+
+export type Payment = typeof payments.$inferSelect;
+export type NewPayment = typeof payments.$inferInsert;

@@ -21,3 +21,6 @@ export const matches = pgTable(
     index("matches_user2_id_idx").on(table.user2Id),
   ],
 );
+
+export type Match = typeof matches.$inferSelect;
+export type NewMatch = typeof matches.$inferInsert;

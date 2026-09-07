@@ -30,3 +30,6 @@ export const education = pgTable(
   },
   (table) => [index("education_user_id_idx").on(table.userId)],
 );
+
+export type Education = typeof education.$inferSelect;
+export type NewEducation = typeof education.$inferInsert;

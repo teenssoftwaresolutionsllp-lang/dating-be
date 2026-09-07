@@ -15,3 +15,6 @@ export const subscriptionPlans = pgTable("subscription_plans", {
   features: jsonb("features"),
   isActive: boolean("is_active").notNull().default(true),
 });
+
+export type SubscriptionPlan = typeof subscriptionPlans.$inferSelect;
+export type NewSubscriptionPlan = typeof subscriptionPlans.$inferInsert;

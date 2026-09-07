@@ -31,3 +31,6 @@ export const swipes = pgTable(
     index("swipes_created_at_idx").on(table.createdAt),
   ],
 );
+
+export type Swipe = typeof swipes.$inferSelect;
+export type NewSwipe = typeof swipes.$inferInsert;

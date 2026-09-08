@@ -1,21 +1,21 @@
 import type { Request } from "express";
-import type { users } from "../db/schema/users";
-import type { otpVerifications } from "../db/schema/otp-verifications";
-import type { userSessions } from "../db/schema/user-sessions";
-import type { socialAccounts } from "../db/schema/social-accounts";
+import type { users } from "../db/schema/users.schema";
+// import type { otpVerifications } from "../db/schema/otp-verifications";
+// import type { userSessions } from "../db/schema/user-sessions";
+// import type { socialAccounts } from "../db/schema/social-accounts";
 
 // Database Inferred Models
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 
-export type OtpVerification = typeof otpVerifications.$inferSelect;
-export type NewOtpVerification = typeof otpVerifications.$inferInsert;
+// export type OtpVerification = typeof otpVerifications.$inferSelect;
+// export type NewOtpVerification = typeof otpVerifications.$inferInsert;
 
-export type UserSession = typeof userSessions.$inferSelect;
-export type NewUserSession = typeof userSessions.$inferInsert;
+// export type UserSession = typeof userSessions.$inferSelect;
+// export type NewUserSession = typeof userSessions.$inferInsert;
 
-export type SocialAccount = typeof socialAccounts.$inferSelect;
-export type NewSocialAccount = typeof socialAccounts.$inferInsert;
+// export type SocialAccount = typeof socialAccounts.$inferSelect;
+// export type NewSocialAccount = typeof socialAccounts.$inferInsert;
 
 // Safe User (sanitized payload without password)
 export interface SafeUser {

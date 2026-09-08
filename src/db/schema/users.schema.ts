@@ -10,7 +10,7 @@ import {
 // Account and authentication data only; dating profile fields belong in profiles.
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
-  email: varchar("email", { length: 255 }).notNull().unique(),
+  email: varchar("email", { length: 255 }).unique(),
   phone: varchar("phone", { length: 20 }).unique(),
   passwordHash: text("password_hash"),
   authProvider: varchar("auth_provider", { length: 50 })

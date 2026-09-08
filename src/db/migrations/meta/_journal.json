@@ -36,6 +36,20 @@
       "when": 1788724343781,
       "tag": "0004_puzzling_franklin_richards",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788782198229,
+      "tag": "0005_brown_cobalt_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788842372117,
+      "tag": "0006_small_fenris",
+      "breakpoints": true
     }
   ]
 }

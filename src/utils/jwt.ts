@@ -1,65 +1,66 @@
-import jwt, { type SignOptions } from "jsonwebtoken";
-import { jwtConfig } from "../config/database";
-import type {
-  SafeUser,
-  TokenPayload,
-  RefreshTokenPayload,
-  TokensResponse,
-} from "../types/index";
+import jwt, { type JwtPayload, type SignOptions } from "jsonwebtoken";
+import type { TokensResponse } from "../types/index";
 
-/**
- * Generate Access and Refresh JWT Tokens
- * @param user User payload (id, phone, email, role)
- * @returns tokens object { accessToken, refreshToken, expiresIn, refreshExpiresIn }
- */
+type AuthUser = {
+  id: string | number;
+  email?: string | null;
+  phone?: string | null;
+  role: string;
+};
+
+const JWT_SECRET = process.env.JWT_SECRET || "development-only-secret";
+const ACCESS_TOKEN_EXPIRES_IN = (process.env.JWT_ACCESS_EXPIRES_IN ||
+  "15m") as SignOptions["expiresIn"];
+const REFRESH_TOKEN_EXPIRES_IN = (process.env.JWT_REFRESH_EXPIRES_IN ||
+  "7d") as SignOptions["expiresIn"];
+
 export const generateTokens = (
-  user: TokenPayload | SafeUser
+  user: AuthUser,
+  sessionId?: string,
 ): TokensResponse => {
-  const payload: TokenPayload = {
+  const payload = {
     id: user.id,
-    phone: user.phone,
+    sessionId,
     email: user.email,
+    phone: user.phone,
     role: user.role,
   };
 
-  const accessOptions: SignOptions = {
-    expiresIn: jwtConfig.expiresIn as SignOptions["expiresIn"],
-  };
-
-  const accessToken = jwt.sign(payload, jwtConfig.secret, accessOptions);
-
-  const refreshOptions: SignOptions = {
-    expiresIn: jwtConfig.refreshExpiresIn as SignOptions["expiresIn"],
-  };
-
-  const refreshToken = jwt.sign(
-    { id: user.id, type: "refresh" },
-    jwtConfig.secret,
-    refreshOptions
-  );
-
   return {
-    accessToken,
-    refreshToken,
-    expiresIn: jwtConfig.expiresIn,
-    refreshExpiresIn: jwtConfig.refreshExpiresIn,
+    accessToken: jwt.sign(payload, JWT_SECRET, {
+      expiresIn: ACCESS_TOKEN_EXPIRES_IN,
+    }),
+    refreshToken: jwt.sign(
+      { id: user.id, sessionId, type: "refresh" },
+      JWT_SECRET,
+      {
+        expiresIn: REFRESH_TOKEN_EXPIRES_IN,
+      },
+    ),
+    expiresIn: String(ACCESS_TOKEN_EXPIRES_IN),
+    refreshExpiresIn: String(REFRESH_TOKEN_EXPIRES_IN),
   };
 };
 
-/**
- * Verify JWT Access Token
- * @param token JWT token string
- * @returns Decoded payload
- */
-export const verifyAccessToken = (token: string): TokenPayload => {
-  return jwt.verify(token, jwtConfig.secret) as TokenPayload;
-};
+export const verifyAccessToken = (
+  token: string,
+): JwtPayload & { id: string; sessionId: string } =>
+  jwt.verify(token, JWT_SECRET) as JwtPayload & {
+    id: string;
+    sessionId: string;
+  };
 
-/**
- * Verify JWT Refresh Token
- * @param token Refresh token string
- * @returns Decoded payload
- */
-export const verifyRefreshToken = (token: string): RefreshTokenPayload => {
-  return jwt.verify(token, jwtConfig.secret) as RefreshTokenPayload;
+export const verifyRefreshToken = (
+  token: string,
+): JwtPayload & { id: string } => {
+  const payload = jwt.verify(token, JWT_SECRET) as JwtPayload & {
+    id: string;
+    type?: string;
+  };
+
+  if (payload.type !== "refresh") {
+    throw new Error("Invalid token type");
+  }
+
+  return payload;
 };

@@ -1,8 +1,9 @@
 import type { Request, Response, NextFunction } from "express";
 import { verifyAccessToken } from "../utils/jwt";
 import { db } from "../db/index";
-import { users } from "../db/schema/users";
-import { eq } from "drizzle-orm";
+import { users } from "../db/schema/users.schema";
+import { userSessions } from "../db/schema/sessions.schema";
+import { and, eq, isNull } from "drizzle-orm";
 import ApiResponse from "../utils/response";
 import type { TokenPayload } from "../types/index";
 
@@ -12,7 +13,7 @@ import type { TokenPayload } from "../types/index";
 export const authenticate = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const authHeader = req.headers.authorization;
@@ -37,21 +38,40 @@ export const authenticate = async (
 
     const decoded = verifyAccessToken(token);
 
+    if (!decoded.sessionId) {
+      return ApiResponse.error(res, {
+        statusCode: 401,
+        message: "Access token is not linked to an active session",
+        code: "INVALID_SESSION",
+      });
+    }
+
+    const [session] = await db
+      .select({
+        userId: userSessions.userId,
+        expiresAt: userSessions.expiresAt,
+      })
+      .from(userSessions)
+      .where(
+        and(
+          eq(userSessions.id, decoded.sessionId),
+          isNull(userSessions.revoked_at),
+        ),
+      );
+
+    if (!session || new Date(session.expiresAt).getTime() <= Date.now()) {
+      return ApiResponse.error(res, {
+        statusCode: 401,
+        message: "Session has been revoked or expired. Please login again.",
+        code: "SESSION_REVOKED",
+      });
+    }
+
     // Verify user exists and is active in database
     const [user] = await db
-      .select({
-        id: users.id,
-        phone: users.phone,
-        countryCode: users.countryCode,
-        email: users.email,
-        preferredLanguage: users.preferredLanguage,
-        role: users.role,
-        isVerified: users.isVerified,
-        isActive: users.isActive,
-        profileCompleted: users.profileCompleted,
-      })
+      .select()
       .from(users)
-      .where(eq(users.id, decoded.id));
+      .where(and(eq(users.id, session.userId), eq(users.id, decoded.id)));
 
     if (!user) {
       return ApiResponse.error(res, {
@@ -61,7 +81,7 @@ export const authenticate = async (
       });
     }
 
-    if (!user.isActive) {
+    if (user.status !== "active") {
       return ApiResponse.error(res, {
         statusCode: 403,
         message: "User account is suspended or deactivated",
@@ -69,7 +89,16 @@ export const authenticate = async (
       });
     }
 
-    req.user = user;
+    req.user = {
+      id: user.id as unknown as number,
+      email: user.email,
+      phone: user.phone,
+      countryCode: "+1",
+      preferredLanguage: "en",
+      role: user.role,
+      isVerified: user.emailVerified,
+      profileCompleted: false,
+    };
     return next();
   } catch (error: unknown) {
     const err = error as { name?: string };
@@ -95,7 +124,7 @@ export const authenticate = async (
 export const optionalAuth = async (
   req: Request,
   _res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const authHeader = req.headers.authorization;
@@ -103,7 +132,7 @@ export const optionalAuth = async (
     if (authHeader && authHeader.startsWith("Bearer ")) {
       const token = authHeader.split(" ")[1];
       if (token) {
-        const decoded = verifyAccessToken(token) as TokenPayload;
+        const decoded = verifyAccessToken(token) as unknown as TokenPayload;
 
         const [user] = await db
           .select({
@@ -138,7 +167,7 @@ export const optionalAuth = async (
 export const requireAdmin = (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   if (!req.user || req.user.role !== "admin") {
     return ApiResponse.error(res, {

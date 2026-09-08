@@ -1,16 +1,22 @@
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, isNull, lt, sql } from "drizzle-orm";
+import { createHash, randomUUID } from "node:crypto";
 import { db } from "../db/index";
-import { users } from "../db/schema/users";
-import { otpVerifications } from "../db/schema/otp-verifications";
-import { userSessions } from "../db/schema/user-sessions";
-import { socialAccounts } from "../db/schema/social-accounts";
+// import { users } from "../db/schema/users";
+// import { otpVerifications } from "../db/schema/otp-verifications";
+// import { userSessions } from "../db/schema/user-sessions";
+// import { socialAccounts } from "../db/schema/social-accounts";
+
 import {
   SUPPORTED_LANGUAGES,
   OTP_CONFIG,
   OTP_PURPOSES,
 } from "../config/constants";
 import { generateOTP, sendSmsOTP } from "../utils/otp";
+import { users } from "../db/schema/users.schema";
+import { userSessions } from "../db/schema/sessions.schema";
 import { generateTokens, verifyRefreshToken } from "../utils/jwt";
+import { otpVerifications } from "../db/schema/otp-verifications.schema";
+
 import type {
   AppError,
   AuthResult,
@@ -28,6 +34,14 @@ import type {
 } from "../types/index";
 
 export class AuthService {
+  static hashOtp(otp: string): string {
+    return createHash("sha256").update(otp).digest("hex");
+  }
+
+  static hashRefreshToken(refreshToken: string): string {
+    return createHash("sha256").update(refreshToken).digest("hex");
+  }
+
   /**
    * Screen 1: Get supported display languages
    */
@@ -49,7 +63,7 @@ export class AuthService {
       eq(otpVerifications.phone, phone),
       eq(otpVerifications.countryCode, countryCode),
       eq(otpVerifications.purpose, OTP_PURPOSES.LOGIN),
-      eq(otpVerifications.isVerified, false)
+      eq(otpVerifications.isVerified, false),
     );
 
     const [latestOtpRecord] = await db
@@ -60,12 +74,14 @@ export class AuthService {
       .limit(1);
 
     if (latestOtpRecord && latestOtpRecord.resendCooldownUntil) {
-      const cooldownTime = new Date(latestOtpRecord.resendCooldownUntil).getTime();
+      const cooldownTime = new Date(
+        latestOtpRecord.resendCooldownUntil,
+      ).getTime();
       const currentTime = now.getTime();
       if (cooldownTime > currentTime) {
         const remainingSeconds = Math.ceil((cooldownTime - currentTime) / 1000);
         const error = new Error(
-          `Please wait ${remainingSeconds} seconds before requesting a new OTP.`
+          `Please wait ${remainingSeconds} seconds before requesting a new OTP.`,
         ) as AppError;
         error.statusCode = 429;
         error.code = "OTP_COOLDOWN_ACTIVE";
@@ -78,17 +94,17 @@ export class AuthService {
     const otpCode = generateOTP(OTP_CONFIG.LENGTH);
 
     const expiresAt = new Date(
-      now.getTime() + OTP_CONFIG.EXPIRY_MINUTES * 60 * 1000
+      now.getTime() + OTP_CONFIG.EXPIRY_MINUTES * 60 * 1000,
     );
     const resendCooldownUntil = new Date(
-      now.getTime() + OTP_CONFIG.RESEND_COOLDOWN_SECONDS * 1000
+      now.getTime() + OTP_CONFIG.RESEND_COOLDOWN_SECONDS * 1000,
     );
 
     // Save OTP to database
     await db.insert(otpVerifications).values({
       phone,
       countryCode,
-      otp: otpCode,
+      otp: AuthService.hashOtp(otpCode),
       purpose: OTP_PURPOSES.LOGIN,
       attempts: 0,
       maxAttempts: OTP_CONFIG.MAX_ATTEMPTS,
@@ -133,7 +149,7 @@ export class AuthService {
       eq(otpVerifications.phone, phone),
       eq(otpVerifications.countryCode, countryCode),
       eq(otpVerifications.purpose, OTP_PURPOSES.LOGIN),
-      eq(otpVerifications.isVerified, false)
+      eq(otpVerifications.isVerified, false),
     );
 
     const [otpRecord] = await db
@@ -145,7 +161,7 @@ export class AuthService {
 
     if (!otpRecord) {
       const error = new Error(
-        "No active OTP found. Please request a new OTP."
+        "No active OTP found. Please request a new OTP.",
       ) as AppError;
       error.statusCode = 400;
       error.code = "OTP_NOT_FOUND";
@@ -153,7 +169,9 @@ export class AuthService {
     }
 
     if (new Date(otpRecord.expiresAt).getTime() < now.getTime()) {
-      const error = new Error("OTP has expired. Please request a new one.") as AppError;
+      const error = new Error(
+        "OTP has expired. Please request a new one.",
+      ) as AppError;
       error.statusCode = 400;
       error.code = "OTP_EXPIRED";
       throw error;
@@ -161,26 +179,33 @@ export class AuthService {
 
     if (otpRecord.attempts >= otpRecord.maxAttempts) {
       const error = new Error(
-        "Maximum OTP attempts exceeded. Please request a new OTP."
+        "Maximum OTP attempts exceeded. Please request a new OTP.",
       ) as AppError;
       error.statusCode = 400;
       error.code = "OTP_MAX_ATTEMPTS_EXCEEDED";
       throw error;
     }
 
-    if (otpRecord.otp !== otp) {
+    if (otpRecord.otp !== AuthService.hashOtp(otp)) {
       // Increment attempt counter
-      await db
+      const [updatedOtp] = await db
         .update(otpVerifications)
         .set({
-          attempts: otpRecord.attempts + 1,
+          attempts: sql`${otpVerifications.attempts} + 1`,
           updatedAt: now,
         })
-        .where(eq(otpVerifications.id, otpRecord.id));
+        .where(
+          and(
+            eq(otpVerifications.id, otpRecord.id),
+            lt(otpVerifications.attempts, otpVerifications.maxAttempts),
+          ),
+        )
+        .returning({ attempts: otpVerifications.attempts });
 
-      const remainingAttempts = otpRecord.maxAttempts - (otpRecord.attempts + 1);
+      const attemptsUsed = updatedOtp?.attempts ?? otpRecord.maxAttempts;
+      const remainingAttempts = otpRecord.maxAttempts - attemptsUsed;
       const error = new Error(
-        `Invalid OTP code. ${remainingAttempts > 0 ? `${remainingAttempts} attempt(s) remaining.` : "Please request a new OTP."}`
+        `Invalid OTP code. ${remainingAttempts > 0 ? `${remainingAttempts} attempt(s) remaining.` : "Please request a new OTP."}`,
       ) as AppError;
       error.statusCode = 400;
       error.code = "INVALID_OTP";
@@ -212,26 +237,19 @@ export class AuthService {
       const [createdUser] = await db
         .insert(users)
         .values({
+          email: null,
           phone,
-          countryCode,
-          preferredLanguage: preferredLanguage || "en",
-          role: "user",
-          isVerified: true,
-          isActive: true,
-          profileCompleted: false,
+          phoneVerified: true,
         })
         .returning();
 
       user = createdUser;
     } else {
       // Update existing user verification and display language
-      const updates: { isVerified: boolean; updatedAt: Date; preferredLanguage?: string } = {
-        isVerified: true,
+      const updates = {
+        phoneVerified: true,
         updatedAt: now,
       };
-      if (preferredLanguage) {
-        updates.preferredLanguage = preferredLanguage;
-      }
 
       const [updatedUser] = await db
         .update(users)
@@ -243,32 +261,33 @@ export class AuthService {
     }
 
     // Generate JWT access and refresh tokens
-    const tokens = generateTokens(user);
+    const sessionId = randomUUID();
+    const tokens = generateTokens(user, sessionId);
 
     // Create session in user_sessions
     const sessionExpiry = new Date(
-      now.getTime() + 7 * 24 * 60 * 60 * 1000 // 7 days
+      now.getTime() + 7 * 24 * 60 * 60 * 1000, // 7 days
     );
 
     await db.insert(userSessions).values({
+      id: sessionId,
       userId: user.id,
-      refreshToken: tokens.refreshToken,
-      userAgent,
+      refreshTokenHash: AuthService.hashRefreshToken(tokens.refreshToken),
+      deviceInfo: userAgent,
       ipAddress,
-      isRevoked: false,
       expiresAt: sessionExpiry,
     });
 
     return {
       isNewUser,
       user: {
-        id: user.id,
+        id: user.id as unknown as number,
         phone: user.phone,
-        countryCode: user.countryCode,
-        preferredLanguage: user.preferredLanguage,
+        countryCode,
+        preferredLanguage: preferredLanguage || "en",
         role: user.role,
-        isVerified: user.isVerified,
-        profileCompleted: user.profileCompleted,
+        isVerified: user.phoneVerified,
+        profileCompleted: false,
         createdAt: user.createdAt,
       },
       tokens,
@@ -292,8 +311,8 @@ export class AuthService {
       .where(
         and(
           eq(socialAccounts.provider, provider),
-          eq(socialAccounts.providerUserId, providerUserId)
-        )
+          eq(socialAccounts.providerUserId, providerUserId),
+        ),
       );
 
     let user: User | undefined;
@@ -333,9 +352,7 @@ export class AuthService {
 
     const tokens = generateTokens(user);
 
-    const sessionExpiry = new Date(
-      Date.now() + 7 * 24 * 60 * 60 * 1000
-    );
+    const sessionExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     await db.insert(userSessions).values({
       userId: user.id,
@@ -429,7 +446,7 @@ export class AuthService {
     userAgent = null,
     ipAddress = null,
   }: RefreshTokenParams): Promise<TokensResponse> {
-    let decoded;
+    let decoded: ReturnType<typeof verifyRefreshToken>;
     try {
       decoded = verifyRefreshToken(refreshToken);
     } catch {
@@ -444,14 +461,17 @@ export class AuthService {
       .from(userSessions)
       .where(
         and(
-          eq(userSessions.refreshToken, refreshToken),
-          eq(userSessions.isRevoked, false)
-        )
+          eq(
+            userSessions.refreshTokenHash,
+            AuthService.hashRefreshToken(refreshToken),
+          ),
+          isNull(userSessions.revoked_at),
+        ),
       );
 
     if (!session || new Date(session.expiresAt).getTime() < Date.now()) {
       const error = new Error(
-        "Session expired or revoked. Please login again."
+        "Session expired or revoked. Please login again.",
       ) as AppError;
       error.statusCode = 401;
       error.code = "SESSION_EXPIRED";
@@ -463,8 +483,10 @@ export class AuthService {
       .from(users)
       .where(eq(users.id, decoded.id));
 
-    if (!user || !user.isActive) {
-      const error = new Error("User account not found or suspended") as AppError;
+    if (!user || user.status !== "active") {
+      const error = new Error(
+        "User account not found or suspended",
+      ) as AppError;
       error.statusCode = 401;
       error.code = "UNAUTHORIZED";
       throw error;
@@ -475,10 +497,10 @@ export class AuthService {
     await db
       .update(userSessions)
       .set({
-        refreshToken: tokens.refreshToken,
-        userAgent,
+        refreshTokenHash: AuthService.hashRefreshToken(tokens.refreshToken),
+        deviceInfo: userAgent,
         ipAddress,
-        updatedAt: new Date(),
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       })
       .where(eq(userSessions.id, session.id));
 
@@ -490,24 +512,36 @@ export class AuthService {
    */
   static async logout({
     refreshToken,
-    userId,
+    userId: _userId,
   }: LogoutParams): Promise<{ success: boolean; message: string }> {
     if (refreshToken) {
       await db
         .update(userSessions)
-        .set({ isRevoked: true, updatedAt: new Date() })
-        .where(eq(userSessions.refreshToken, refreshToken));
-    } else if (userId) {
-      await db
-        .update(userSessions)
-        .set({ isRevoked: true, updatedAt: new Date() })
-        .where(eq(userSessions.userId, userId));
+        .set({ revoked_at: new Date() })
+        .where(
+          eq(
+            userSessions.refreshTokenHash,
+            AuthService.hashRefreshToken(refreshToken),
+          ),
+        );
     }
 
     return {
       success: true,
       message: "Logged out successfully",
     };
+  }
+
+  /**
+   * Revoke every active session for a user.
+   */
+  static async logoutAllSessions(userId: string): Promise<void> {
+    await db
+      .update(userSessions)
+      .set({ revoked_at: new Date() })
+      .where(
+        and(eq(userSessions.userId, userId), isNull(userSessions.revoked_at)),
+      );
   }
 }
 

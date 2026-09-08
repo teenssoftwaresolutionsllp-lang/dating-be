@@ -25,7 +25,7 @@ const isValidLanguageCode = (code?: unknown): boolean => {
 export const validateSendOtp = (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   const { phone, countryCode = "+91", preferredLanguage } = req.body;
 
@@ -40,7 +40,8 @@ export const validateSendOtp = (
   if (!isValidPhone(phone)) {
     return ApiResponse.error(res, {
       statusCode: 400,
-      message: "Invalid phone number. Please enter a valid 10-digit mobile number.",
+      message:
+        "Invalid phone number. Please enter a valid 10-digit mobile number.",
       code: "INVALID_PHONE",
     });
   }
@@ -67,7 +68,7 @@ export const validateSendOtp = (
 export const validateVerifyOtp = (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   const { phone, otp, countryCode = "+91", preferredLanguage } = req.body;
 
@@ -88,7 +89,7 @@ export const validateVerifyOtp = (
   }
 
   const cleanOtp = otp.toString().trim();
-  if (cleanOtp.length < 4 || cleanOtp.length > 6) {
+  if (!/^\d{4}$/.test(cleanOtp)) {
     return ApiResponse.error(res, {
       statusCode: 400,
       message: "Invalid OTP format (4 digits required)",
@@ -119,7 +120,7 @@ export const validateVerifyOtp = (
 export const validateSetLanguage = (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   const { language } = req.body;
 
@@ -138,8 +139,7 @@ export const validateSetLanguage = (
  * Social Auth Validator (Screen 2 buttons)
  */
 export const validateSocialAuth =
-  (provider: string) =>
-  (req: Request, res: Response, next: NextFunction) => {
+  (provider: string) => (req: Request, res: Response, next: NextFunction) => {
     const { providerUserId, preferredLanguage } = req.body;
 
     if (!providerUserId) {
@@ -168,7 +168,7 @@ export const validateSocialAuth =
 export const validateRefreshToken = (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   const { refreshToken } = req.body;
 

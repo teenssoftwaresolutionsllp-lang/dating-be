@@ -6,6 +6,7 @@ import helmet from "helmet";
 import morgan from "morgan";
 
 import authRoutes from "./routes/auth.routes";
+import profileRoutes from "./routes/profile.routes";
 import { errorHandler, notFoundHandler } from "./middleware/error.middleware";
 
 const app: Express = express();
@@ -38,6 +39,7 @@ app.get("/api/health", (_req: Request, res: Response) => {
   });
 });
 app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1", profileRoutes);
 // =================================================================
 // API Routes (v1)
 // =================================================================

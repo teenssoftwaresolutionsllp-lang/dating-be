@@ -1,9 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { verifyAccessToken } from "../utils/jwt";
-import { db } from "../db/index";
-import { users } from "../db/schema/users.schema";
-import { userSessions } from "../db/schema/sessions.schema";
-import { and, eq, isNull } from "drizzle-orm";
+import AuthRepository from "../repositories/auth.repository";
 import ApiResponse from "../utils/response";
 import type { TokenPayload } from "../types/index";
 
@@ -46,18 +43,9 @@ export const authenticate = async (
       });
     }
 
-    const [session] = await db
-      .select({
-        userId: userSessions.userId,
-        expiresAt: userSessions.expiresAt,
-      })
-      .from(userSessions)
-      .where(
-        and(
-          eq(userSessions.id, decoded.sessionId),
-          isNull(userSessions.revoked_at),
-        ),
-      );
+    const session = await AuthRepository.findActiveSessionById(
+      decoded.sessionId,
+    );
 
     if (!session || new Date(session.expiresAt).getTime() <= Date.now()) {
       return ApiResponse.error(res, {
@@ -67,13 +55,9 @@ export const authenticate = async (
       });
     }
 
-    // Verify user exists and is active in database
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(and(eq(users.id, session.userId), eq(users.id, decoded.id)));
+    const user = await AuthRepository.findUserById(session.userId);
 
-    if (!user) {
+    if (!user || user.user_id !== decoded.id) {
       return ApiResponse.error(res, {
         statusCode: 401,
         message: "User account not found or deleted",
@@ -90,13 +74,13 @@ export const authenticate = async (
     }
 
     req.user = {
-      id: user.id as unknown as number,
-      email: user.email,
+      id: user.user_id,
+      userId: user.user_id,
       phone: user.phone,
       countryCode: "+1",
       preferredLanguage: "en",
       role: user.role,
-      isVerified: user.emailVerified,
+      isVerified: user.phoneVerified,
       profileCompleted: false,
     };
     return next();
@@ -117,7 +101,7 @@ export const authenticate = async (
     });
   }
 };
-
+//test pending
 /**
  * Optional Authentication (Attaches req.user if valid token present)
  */
@@ -134,23 +118,19 @@ export const optionalAuth = async (
       if (token) {
         const decoded = verifyAccessToken(token) as unknown as TokenPayload;
 
-        const [user] = await db
-          .select({
-            id: users.id,
-            phone: users.phone,
-            countryCode: users.countryCode,
-            email: users.email,
-            preferredLanguage: users.preferredLanguage,
-            role: users.role,
-            isVerified: users.isVerified,
-            isActive: users.isActive,
-            profileCompleted: users.profileCompleted,
-          })
-          .from(users)
-          .where(eq(users.id, decoded.id));
+        const user = await AuthRepository.findUserById(decoded.id);
 
-        if (user && user.isActive) {
-          req.user = user;
+        if (user && user.status === "active") {
+          req.user = {
+            id: user.user_id,
+            userId: user.user_id,
+            phone: user.phone,
+            countryCode: "+1",
+            preferredLanguage: "en",
+            role: user.role,
+            isVerified: user.phoneVerified,
+            profileCompleted: false,
+          };
         }
       }
     }

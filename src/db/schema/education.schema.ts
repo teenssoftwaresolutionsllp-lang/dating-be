@@ -1,8 +1,8 @@
 import {
-  index,
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
@@ -14,7 +14,7 @@ export const education = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.user_id, { onDelete: "cascade" }),
     educationLevel: varchar("education_level", { length: 30 }).notNull(),
     qualification: varchar("qualification", { length: 100 }),
     profession: varchar("profession", { length: 100 }),
@@ -28,7 +28,7 @@ export const education = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (table) => [index("education_user_id_idx").on(table.userId)],
+  (table) => [uniqueIndex("education_user_id_unique").on(table.userId)],
 );
 
 export type Education = typeof education.$inferSelect;

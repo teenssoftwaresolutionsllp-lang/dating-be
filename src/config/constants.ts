@@ -40,14 +40,6 @@ export const SUPPORTED_LANGUAGES = [
 export const OTP_PURPOSES = {
   LOGIN: "LOGIN",
   REGISTER: "REGISTER",
-  RESET_PASSWORD: "RESET_PASSWORD",
-};
-
-export const SOCIAL_PROVIDERS = {
-  GOOGLE: "google",
-  APPLE: "apple",
-  FACEBOOK: "facebook",
-  INSTAGRAM: "instagram",
 };
 
 export const USER_ROLES = {

@@ -14,7 +14,7 @@ export const userSessions = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.user_id, { onDelete: "cascade" }),
     refreshTokenHash: text("refresh_token_hash").notNull().unique(),
     deviceInfo: text("device_info"),
     revoked_at: timestamp("revoked_at", { withTimezone: true }),

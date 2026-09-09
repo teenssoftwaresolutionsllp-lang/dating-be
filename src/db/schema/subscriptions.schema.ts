@@ -8,7 +8,7 @@ export const subscriptions = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.user_id, { onDelete: "cascade" }),
     planId: uuid("plan_id")
       .notNull()
       .references(() => subscriptionPlans.id),

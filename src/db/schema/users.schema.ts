@@ -1,7 +1,6 @@
 import {
   boolean,
   pgTable,
-  text,
   timestamp,
   uuid,
   varchar,
@@ -9,16 +8,17 @@ import {
 
 // Account and authentication data only; dating profile fields belong in profiles.
 export const users = pgTable("users", {
-  id: uuid("id").defaultRandom().primaryKey(),
+  user_id: uuid("user_id").defaultRandom().primaryKey(),
   email: varchar("email", { length: 255 }).unique(),
   phone: varchar("phone", { length: 20 }).unique(),
-  passwordHash: text("password_hash"),
-  authProvider: varchar("auth_provider", { length: 50 })
-    .notNull()
-    .default("email"),
   role: varchar("role", { length: 20 }).notNull().default("user"),
   status: varchar("status", { length: 20 }).notNull().default("active"),
-  emailVerified: boolean("email_verified").notNull().default(false),
+  onboardingStep: varchar("onboarding_step", { length: 30 })
+    .notNull()
+    .default("BASIC_DETAILS"),
+  onboardingCompletedAt: timestamp("onboarding_completed_at", {
+    withTimezone: true,
+  }),
   phoneVerified: boolean("phone_verified").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

@@ -8,18 +8,22 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { users } from "./users.schema";
+import { locations } from "./locations.schema";
 
 export const profiles = pgTable("profiles", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: uuid("user_id")
     .notNull()
     .unique()
-    .references(() => users.id, { onDelete: "cascade" }),
-  name: varchar("name", { length: 100 }).notNull(),
-  dateOfBirth: date("date_of_birth").notNull(),
-  gender: varchar("gender", { length: 20 }).notNull(),
+    .references(() => users.user_id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 100 }),
+  dateOfBirth: date("date_of_birth"),
+  gender: varchar("gender", { length: 20 }),
   height: smallint("height"),
   location: varchar("location", { length: 150 }),
+  locationId: uuid("location_id").references(() => locations.id, {
+    onDelete: "set null",
+  }),
   relationshipStatus: varchar("relationship_status", { length: 30 }),
   bio: text("bio"),
   createdAt: timestamp("created_at", { withTimezone: true })

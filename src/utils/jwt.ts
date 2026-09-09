@@ -2,8 +2,7 @@ import jwt, { type JwtPayload, type SignOptions } from "jsonwebtoken";
 import type { TokensResponse } from "../types/index";
 
 type AuthUser = {
-  id: string | number;
-  email?: string | null;
+  id: string;
   phone?: string | null;
   role: string;
 };
@@ -21,7 +20,6 @@ export const generateTokens = (
   const payload = {
     id: user.id,
     sessionId,
-    email: user.email,
     phone: user.phone,
     role: user.role,
   };
@@ -52,9 +50,10 @@ export const verifyAccessToken = (
 
 export const verifyRefreshToken = (
   token: string,
-): JwtPayload & { id: string } => {
+): JwtPayload & { id: string; sessionId: string } => {
   const payload = jwt.verify(token, JWT_SECRET) as JwtPayload & {
     id: string;
+    sessionId: string;
     type?: string;
   };
 

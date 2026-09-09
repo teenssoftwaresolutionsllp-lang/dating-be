@@ -14,10 +14,10 @@ export const reports = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     reporterId: uuid("reporter_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.user_id, { onDelete: "cascade" }),
     reportedUserId: uuid("reported_user_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.user_id, { onDelete: "cascade" }),
     reason: varchar("reason", { length: 50 }).notNull(),
     description: text("description"),
     status: varchar("status", { length: 20 }).notNull().default("pending"),

@@ -14,10 +14,10 @@ export const swipes = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.user_id, { onDelete: "cascade" }),
     targetUserId: uuid("target_user_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.user_id, { onDelete: "cascade" }),
     action: varchar("action", { length: 20 }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

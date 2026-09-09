@@ -7,6 +7,7 @@ import { education } from "./schema/education.schema";
 import { interests } from "./schema/interests.schema";
 import { kycVerifications } from "./schema/kyc.schema";
 import { languages } from "./schema/languages.schema";
+import { locations } from "./schema/locations.schema";
 import { matches } from "./schema/matches.schema";
 import { messageReads } from "./schema/message-reads.schema";
 import { messages } from "./schema/messages.schema";
@@ -53,9 +54,17 @@ export const usersRelations = relations(users, ({ many, one }) => ({
 }));
 
 export const profilesRelations = relations(profiles, ({ many, one }) => ({
-  user: one(users, { fields: [profiles.userId], references: [users.id] }),
+  user: one(users, { fields: [profiles.userId], references: [users.user_id] }),
+  location: one(locations, {
+    fields: [profiles.locationId],
+    references: [locations.id],
+  }),
   languages: many(profileLanguages),
   interests: many(profileInterests),
+}));
+
+export const locationsRelations = relations(locations, ({ many }) => ({
+  profiles: many(profiles),
 }));
 
 export const languagesRelations = relations(languages, ({ many }) => ({
@@ -95,11 +104,14 @@ export const profileInterestsRelations = relations(
 );
 
 export const userSessionsRelations = relations(userSessions, ({ one }) => ({
-  user: one(users, { fields: [userSessions.userId], references: [users.id] }),
+  user: one(users, {
+    fields: [userSessions.userId],
+    references: [users.user_id],
+  }),
 }));
 
 export const educationRelations = relations(education, ({ one }) => ({
-  user: one(users, { fields: [education.userId], references: [users.id] }),
+  user: one(users, { fields: [education.userId], references: [users.user_id] }),
 }));
 
 export const kycVerificationsRelations = relations(
@@ -107,13 +119,16 @@ export const kycVerificationsRelations = relations(
   ({ one }) => ({
     user: one(users, {
       fields: [kycVerifications.userId],
-      references: [users.id],
+      references: [users.user_id],
     }),
   }),
 );
 
 export const profilePhotosRelations = relations(profilePhotos, ({ one }) => ({
-  user: one(users, { fields: [profilePhotos.userId], references: [users.id] }),
+  user: one(users, {
+    fields: [profilePhotos.userId],
+    references: [users.user_id],
+  }),
 }));
 
 export const datingPreferencesRelations = relations(
@@ -121,7 +136,7 @@ export const datingPreferencesRelations = relations(
   ({ one }) => ({
     user: one(users, {
       fields: [datingPreferences.userId],
-      references: [users.id],
+      references: [users.user_id],
     }),
   }),
 );
@@ -129,12 +144,12 @@ export const datingPreferencesRelations = relations(
 export const swipesRelations = relations(swipes, ({ one }) => ({
   swiper: one(users, {
     fields: [swipes.userId],
-    references: [users.id],
+    references: [users.user_id],
     relationName: "swiper",
   }),
   target: one(users, {
     fields: [swipes.targetUserId],
-    references: [users.id],
+    references: [users.user_id],
     relationName: "swipeTarget",
   }),
 }));
@@ -142,12 +157,12 @@ export const swipesRelations = relations(swipes, ({ one }) => ({
 export const matchesRelations = relations(matches, ({ one }) => ({
   user1: one(users, {
     fields: [matches.user1Id],
-    references: [users.id],
+    references: [users.user_id],
     relationName: "matchUser1",
   }),
   user2: one(users, {
     fields: [matches.user2Id],
-    references: [users.id],
+    references: [users.user_id],
     relationName: "matchUser2",
   }),
   conversation: one(conversations),
@@ -174,7 +189,7 @@ export const conversationMembersRelations = relations(
     }),
     user: one(users, {
       fields: [conversationMembers.userId],
-      references: [users.id],
+      references: [users.user_id],
     }),
   }),
 );
@@ -186,7 +201,7 @@ export const messagesRelations = relations(messages, ({ many, one }) => ({
   }),
   sender: one(users, {
     fields: [messages.senderId],
-    references: [users.id],
+    references: [users.user_id],
     relationName: "messageSender",
   }),
   reads: many(messageReads),
@@ -197,18 +212,21 @@ export const messageReadsRelations = relations(messageReads, ({ one }) => ({
     fields: [messageReads.messageId],
     references: [messages.id],
   }),
-  user: one(users, { fields: [messageReads.userId], references: [users.id] }),
+  user: one(users, {
+    fields: [messageReads.userId],
+    references: [users.user_id],
+  }),
 }));
 
 export const blocksRelations = relations(blocks, ({ one }) => ({
   blocker: one(users, {
     fields: [blocks.userId],
-    references: [users.id],
+    references: [users.user_id],
     relationName: "blocker",
   }),
   blocked: one(users, {
     fields: [blocks.blockedUserId],
-    references: [users.id],
+    references: [users.user_id],
     relationName: "blocked",
   }),
 }));
@@ -216,18 +234,21 @@ export const blocksRelations = relations(blocks, ({ one }) => ({
 export const reportsRelations = relations(reports, ({ one }) => ({
   reporter: one(users, {
     fields: [reports.reporterId],
-    references: [users.id],
+    references: [users.user_id],
     relationName: "reporter",
   }),
   reported: one(users, {
     fields: [reports.reportedUserId],
-    references: [users.id],
+    references: [users.user_id],
     relationName: "reported",
   }),
 }));
 
 export const notificationsRelations = relations(notifications, ({ one }) => ({
-  user: one(users, { fields: [notifications.userId], references: [users.id] }),
+  user: one(users, {
+    fields: [notifications.userId],
+    references: [users.user_id],
+  }),
 }));
 
 export const notificationSettingsRelations = relations(
@@ -235,17 +256,23 @@ export const notificationSettingsRelations = relations(
   ({ one }) => ({
     user: one(users, {
       fields: [notificationSettings.userId],
-      references: [users.id],
+      references: [users.user_id],
     }),
   }),
 );
 
 export const userSettingsRelations = relations(userSettings, ({ one }) => ({
-  user: one(users, { fields: [userSettings.userId], references: [users.id] }),
+  user: one(users, {
+    fields: [userSettings.userId],
+    references: [users.user_id],
+  }),
 }));
 
 export const userDevicesRelations = relations(userDevices, ({ one }) => ({
-  user: one(users, { fields: [userDevices.userId], references: [users.id] }),
+  user: one(users, {
+    fields: [userDevices.userId],
+    references: [users.user_id],
+  }),
 }));
 
 export const subscriptionPlansRelations = relations(
@@ -260,7 +287,7 @@ export const subscriptionsRelations = relations(
   ({ many, one }) => ({
     user: one(users, {
       fields: [subscriptions.userId],
-      references: [users.id],
+      references: [users.user_id],
     }),
     plan: one(subscriptionPlans, {
       fields: [subscriptions.planId],
@@ -271,7 +298,7 @@ export const subscriptionsRelations = relations(
 );
 
 export const paymentsRelations = relations(payments, ({ one }) => ({
-  user: one(users, { fields: [payments.userId], references: [users.id] }),
+  user: one(users, { fields: [payments.userId], references: [users.user_id] }),
   subscription: one(subscriptions, {
     fields: [payments.subscriptionId],
     references: [subscriptions.id],

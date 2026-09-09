@@ -6,7 +6,7 @@ export const userSettings = pgTable("user_settings", {
   userId: uuid("user_id")
     .notNull()
     .unique()
-    .references(() => users.id, { onDelete: "cascade" }),
+    .references(() => users.user_id, { onDelete: "cascade" }),
   profileVisibility: boolean("profile_visibility").notNull().default(true),
   showVerifiedOnly: boolean("show_verified_only").notNull().default(false),
   locationVisibility: varchar("location_visibility", { length: 20 })

@@ -2,13 +2,13 @@ import {
   boolean,
   integer,
   pgTable,
-  serial,
   timestamp,
+  uuid,
   varchar,
 } from "drizzle-orm/pg-core";
 
 export const otpVerifications = pgTable("otp_verifications", {
-  id: serial("id").primaryKey(),
+  id: uuid("id").defaultRandom().primaryKey(),
   phone: varchar("phone", { length: 20 }).notNull(),
   countryCode: varchar("country_code", { length: 10 }).notNull().default("+91"),
   otp: varchar("otp", { length: 128 }).notNull(),
@@ -30,3 +30,4 @@ export const otpVerifications = pgTable("otp_verifications", {
 
 export type OtpVerification = typeof otpVerifications.$inferSelect;
 export type NewOtpVerification = typeof otpVerifications.$inferInsert;
+

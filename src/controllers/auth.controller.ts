@@ -95,6 +95,7 @@ export class AuthController {
    * GET /api/v1/auth/me
    * Get current authenticated user details
    */
+
   static async getMe(req: Request, res: Response): Promise<Response> {
     const userId = req.user?.id;
 

@@ -17,7 +17,10 @@ import {
 import { interests } from "../db/schema/interests.schema";
 import { profileInterests } from "../db/schema/profile-interests.schema";
 import { profilePhotos } from "../db/schema/profile-photos.schema";
-import type { NewProfilePhoto, ProfilePhoto } from "../db/schema/profile-photos.schema";
+import type {
+  NewProfilePhoto,
+  ProfilePhoto,
+} from "../db/schema/profile-photos.schema";
 import { languages } from "../db/schema/languages.schema";
 import { profileLanguages } from "../db/schema/profile-languages.schema";
 import {
@@ -48,9 +51,7 @@ class ProfileRepository {
       .where(eq(profilePhotos.userId, userId));
   }
 
-  async createProfilePhoto(
-    values: NewProfilePhoto,
-  ): Promise<ProfilePhoto> {
+  async createProfilePhoto(values: NewProfilePhoto): Promise<ProfilePhoto> {
     return db.transaction(async (transaction) => {
       const [photo] = await transaction
         .insert(profilePhotos)
@@ -73,10 +74,7 @@ class ProfileRepository {
     const [photo] = await db
       .delete(profilePhotos)
       .where(
-        and(
-          eq(profilePhotos.id, photoId),
-          eq(profilePhotos.userId, userId),
-        ),
+        and(eq(profilePhotos.id, photoId), eq(profilePhotos.userId, userId)),
       )
       .returning();
 

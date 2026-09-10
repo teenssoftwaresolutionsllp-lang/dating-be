@@ -7,9 +7,7 @@ import ProfileRepository, {
   type ProfileUpdate,
 } from "../repositories/profile.repository";
 import type { AppError } from "../types/index";
-import {
-  uploadDirectory,
-} from "../middleware/photo-upload.middleware";
+import { uploadDirectory } from "../middleware/photo-upload.middleware";
 
 export const ONBOARDING_STEPS = [
   "BASIC_DETAILS",
@@ -35,10 +33,7 @@ const createNotFoundError = (message: string): AppError => {
 };
 
 class ProfileService {
-  async addPhoto(
-    userId: string,
-    file: Express.Multer.File,
-  ) {
+  async addPhoto(userId: string, file: Express.Multer.File) {
     const existingPhotos = await ProfileRepository.findPhotosByUserId(userId);
     const storageKey = file.filename;
     const photo = await ProfileRepository.createProfilePhoto({

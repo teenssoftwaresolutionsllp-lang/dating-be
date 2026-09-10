@@ -1293,19 +1293,19 @@ users.onboarding_completed_at
 
 ## 13. Current Database Tables Used by Onboarding
 
-| Table                | Purpose                                    |
-| -------------------- | ------------------------------------------ |
-| `users`              | Account status and onboarding progress     |
-| `user_sessions`      | Authenticated sessions                     |
-| `profiles`           | Core profile details                       |
-| `languages`          | Predefined language master data            |
-| `profile_languages`  | User-language relationships                |
-| `education`          | One education record per user              |
-| `kyc_verifications`  | Hashed KYC submission and status           |
-| `profile_photos`     | Local profile photo metadata              |
-| `interests`          | Predefined interest master data            |
-| `profile_interests`  | User-interest relationships                |
-| `dating_preferences` | One preference record per user             |
+| Table                | Purpose                                |
+| -------------------- | -------------------------------------- |
+| `users`              | Account status and onboarding progress |
+| `user_sessions`      | Authenticated sessions                 |
+| `profiles`           | Core profile details                   |
+| `languages`          | Predefined language master data        |
+| `profile_languages`  | User-language relationships            |
+| `education`          | One education record per user          |
+| `kyc_verifications`  | Hashed KYC submission and status       |
+| `profile_photos`     | Local profile photo metadata           |
+| `interests`          | Predefined interest master data        |
+| `profile_interests`  | User-interest relationships            |
+| `dating_preferences` | One preference record per user         |
 
 ## 14. Known Limitations
 

@@ -10,7 +10,7 @@ export class MessageController {
   static async sendMessage(req: Request, res: Response): Promise<Response> {
     const senderId = req.user?.id;
     const { receiverId, content, messageType } = req.body as {
-      receiverId: number;
+      receiverId: string;
       content: string;
       messageType?: "text" | "image" | "audio";
     };
@@ -23,10 +23,10 @@ export class MessageController {
       });
     }
 
-    if (!receiverId || isNaN(Number(receiverId))) {
+    if (!receiverId || typeof receiverId !== "string") {
       return ApiResponse.error(res, {
         statusCode: 400,
-        message: "receiverId is required and must be a number",
+        message: "receiverId is required",
         code: "VALIDATION_ERROR",
       });
     }
@@ -41,7 +41,7 @@ export class MessageController {
 
     const message = await MessageService.sendMessage({
       senderId,
-      receiverId: Number(receiverId),
+      receiverId,
       content,
       messageType: messageType ?? "text",
     });
@@ -59,7 +59,7 @@ export class MessageController {
    */
   static async getConversation(req: Request, res: Response): Promise<Response> {
     const currentUserId = req.user?.id;
-    const otherUserId = parseInt(String(req.params.userId), 10);
+    const otherUserId = String(req.params.userId);
 
     if (!currentUserId) {
       return ApiResponse.error(res, {
@@ -69,7 +69,7 @@ export class MessageController {
       });
     }
 
-    if (isNaN(otherUserId)) {
+    if (!otherUserId) {
       return ApiResponse.error(res, {
         statusCode: 400,
         message: "Invalid user ID",
@@ -130,7 +130,7 @@ export class MessageController {
    */
   static async deleteMessage(req: Request, res: Response): Promise<Response> {
     const userId = req.user?.id;
-    const messageId = parseInt(String(req.params.messageId), 10);
+    const messageId = String(req.params.messageId);
 
     if (!userId) {
       return ApiResponse.error(res, {
@@ -140,7 +140,7 @@ export class MessageController {
       });
     }
 
-    if (isNaN(messageId)) {
+    if (!messageId) {
       return ApiResponse.error(res, {
         statusCode: 400,
         message: "Invalid message ID",

@@ -1,26 +1,18 @@
-export * from "./users.schema";
-export * from "./sessions.schema";
-export * from "./profiles.schema";
-export * from "./languages.schema";
-export * from "./profile-languages.schema";
-export * from "./education.schema";
-export * from "./kyc.schema";
-export * from "./profile-photos.schema";
-export * from "./interests.schema";
-export * from "./profile-interests.schema";
-export * from "./dating-preferences.schema";
-export * from "./swipes.schema";
-export * from "./matches.schema";
-export * from "./conversations.schema";
-export * from "./conversation-members.schema";
-export * from "./messages.schema";
-export * from "./message-reads.schema";
-export * from "./blocks.schema";
-export * from "./reports.schema";
-export * from "./notifications.schema";
-export * from "./notification-settings.schema";
-export * from "./user-settings.schema";
-export * from "./user-devices.schema";
-export * from "./subscription-plans.schema";
-export * from "./subscriptions.schema";
-export * from "./payments.schema";
+/**
+ * ============================================================================
+ * DATABASE SCHEMA BARREL EXPORT
+ * ============================================================================
+ * Consolidates and exports all database entities, relations, types, and enums
+ * across the 5 canonical schema layers:
+ * 1. independent.ts -> Master lookup & catalog tables (0 dependencies)
+ * 2. core.ts        -> Identity, authentication, profiles, settings, devices
+ * 3. junction.ts    -> Many-to-Many join tables with composite primary keys
+ * 4. dependent.ts   -> Discovery, matching, messaging, safety, moderation, logs
+ * 5. payments.ts    -> Subscriptions, payments, webhook events, feature usage
+ */
+
+export * from "./independent";
+export * from "./core";
+export * from "./junction";
+export * from "./dependent";
+export * from "./payments";

@@ -1,13 +1,13 @@
 import { eq } from "drizzle-orm";
 import { db } from "../db/index";
-import { users } from "../db/schema/users";
+import { users } from "../db/schema";
 import type { SafeUser, User } from "../types/index";
 
 export class UserService {
   /**
    * Find user by ID
    */
-  static async findById(id: number): Promise<User | undefined> {
+  static async findById(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;
   }
@@ -31,18 +31,21 @@ export class UserService {
   /**
    * Get safe user profile by ID
    */
-  static async getProfile(id: number): Promise<SafeUser | undefined> {
+  static async getProfile(id: string): Promise<SafeUser | undefined> {
     const [user] = await db
       .select({
         id: users.id,
+        email: users.email,
         phone: users.phone,
-        countryCode: users.countryCode,
-        preferredLanguage: users.preferredLanguage,
         role: users.role,
-        isVerified: users.isVerified,
-        isActive: users.isActive,
-        profileCompleted: users.profileCompleted,
+        status: users.status,
+        emailVerified: users.emailVerified,
+        phoneVerified: users.phoneVerified,
+        authProvider: users.authProvider,
+        lastLoginAt: users.lastLoginAt,
+        lastActiveAt: users.lastActiveAt,
         createdAt: users.createdAt,
+        updatedAt: users.updatedAt,
       })
       .from(users)
       .where(eq(users.id, id));

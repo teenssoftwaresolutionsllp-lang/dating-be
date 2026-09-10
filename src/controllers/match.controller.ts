@@ -11,7 +11,7 @@ export class MatchController {
   static async swipe(req: Request, res: Response): Promise<Response> {
     const userId = req.user?.id;
     const { targetUserId, direction } = req.body as {
-      targetUserId: number;
+      targetUserId: string;
       direction: SwipeDirection;
     };
 
@@ -23,10 +23,10 @@ export class MatchController {
       });
     }
 
-    if (!targetUserId || isNaN(Number(targetUserId))) {
+    if (!targetUserId || typeof targetUserId !== "string") {
       return ApiResponse.error(res, {
         statusCode: 400,
-        message: "targetUserId is required and must be a number",
+        message: "targetUserId is required",
         code: "VALIDATION_ERROR",
       });
     }
@@ -42,7 +42,7 @@ export class MatchController {
 
     const result = await MatchService.swipe({
       userId,
-      targetUserId: Number(targetUserId),
+      targetUserId,
       direction,
     });
 
@@ -94,7 +94,7 @@ export class MatchController {
    */
   static async unmatch(req: Request, res: Response): Promise<Response> {
     const userId = req.user?.id;
-    const matchedUserId = parseInt(String(req.params.matchedUserId), 10);
+    const matchedUserId = String(req.params.matchedUserId);
 
     if (!userId) {
       return ApiResponse.error(res, {
@@ -104,7 +104,7 @@ export class MatchController {
       });
     }
 
-    if (isNaN(matchedUserId)) {
+    if (!matchedUserId) {
       return ApiResponse.error(res, {
         statusCode: 400,
         message: "Invalid matchedUserId",

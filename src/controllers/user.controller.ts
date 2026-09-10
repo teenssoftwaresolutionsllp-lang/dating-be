@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import UserService from "../services/user.service";
 import { db } from "../db/index";
-import { users } from "../db/schema/users";
+import { users } from "../db/schema";
 import { eq } from "drizzle-orm";
 import ApiResponse from "../utils/response";
 
@@ -40,7 +40,7 @@ export class UserController {
 
   /**
    * PATCH /api/v1/users/me
-   * Update basic account info (email, preferred language)
+   * Update basic account info (email)
    */
   static async updateProfile(req: Request, res: Response): Promise<Response> {
     const userId = req.user?.id;
@@ -53,16 +53,13 @@ export class UserController {
       });
     }
 
-    const { email, preferredLanguage } = req.body as {
+    const { email } = req.body as {
       email?: string;
-      preferredLanguage?: string;
     };
 
-    // Build update payload — only update provided fields
     const updates: {
       updatedAt: Date;
       email?: string;
-      preferredLanguage?: string;
     } = { updatedAt: new Date() };
 
     if (email !== undefined) {
@@ -77,10 +74,6 @@ export class UserController {
       updates.email = email.trim().toLowerCase();
     }
 
-    if (preferredLanguage !== undefined) {
-      updates.preferredLanguage = preferredLanguage;
-    }
-
     const [updated] = await db
       .update(users)
       .set(updates)
@@ -89,11 +82,10 @@ export class UserController {
         id: users.id,
         phone: users.phone,
         email: users.email,
-        countryCode: users.countryCode,
-        preferredLanguage: users.preferredLanguage,
         role: users.role,
-        isVerified: users.isVerified,
-        profileCompleted: users.profileCompleted,
+        status: users.status,
+        emailVerified: users.emailVerified,
+        phoneVerified: users.phoneVerified,
         updatedAt: users.updatedAt,
       });
 
@@ -128,7 +120,7 @@ export class UserController {
     }
 
     const [user] = await db
-      .select({ id: users.id, isActive: users.isActive })
+      .select({ id: users.id, status: users.status })
       .from(users)
       .where(eq(users.id, userId));
 
@@ -140,7 +132,7 @@ export class UserController {
       });
     }
 
-    if (!user.isActive) {
+    if (user.status === "deleted") {
       return ApiResponse.error(res, {
         statusCode: 409,
         message: "Account is already deactivated",
@@ -148,10 +140,11 @@ export class UserController {
       });
     }
 
-    // Soft-delete: set isActive to false
+    // Soft-delete: set status to deleted and record deletedAt
+    const now = new Date();
     await db
       .update(users)
-      .set({ isActive: false, updatedAt: new Date() })
+      .set({ status: "deleted", deletedAt: now, updatedAt: now })
       .where(eq(users.id, userId));
 
     return ApiResponse.success(res, {

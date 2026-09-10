@@ -1,5 +1,5 @@
 import { db } from "../db/index";
-import { users } from "../db/schema/users";
+import { users } from "../db/schema";
 import { eq } from "drizzle-orm";
 import type {
   AppError,
@@ -12,7 +12,7 @@ import type {
 } from "../types/index";
 
 /**
- * In-memory message store (replace with DB table once schema is migrated)
+ * In-memory message store (used by message controllers pending DB query integration)
  */
 const messageStore: MessageRecord[] = [];
 let msgIdCounter = 1;
@@ -52,11 +52,11 @@ export class MessageService {
 
     // Verify receiver exists
     const [receiver] = await db
-      .select({ id: users.id, isActive: users.isActive })
+      .select({ id: users.id, status: users.status })
       .from(users)
       .where(eq(users.id, receiverId));
 
-    if (!receiver || !receiver.isActive) {
+    if (!receiver || receiver.status !== "active") {
       const error = new Error("Receiver not found or inactive") as AppError;
       error.statusCode = 404;
       error.code = "USER_NOT_FOUND";
@@ -65,7 +65,7 @@ export class MessageService {
 
     const now = new Date();
     const message: MessageRecord = {
-      id: msgIdCounter++,
+      id: `msg_${msgIdCounter++}`,
       senderId,
       receiverId,
       content: content.trim(),
@@ -118,14 +118,14 @@ export class MessageService {
    * Get conversation list (inbox) for a user
    */
   static async getConversations(
-    userId: number
+    userId: string
   ): Promise<ConversationSummary[]> {
     const userMessages = messageStore.filter(
       (m) => !m.isDeleted && (m.senderId === userId || m.receiverId === userId)
     );
 
     // Build unique conversation partner list
-    const partnerMap = new Map<number, ConversationSummary>();
+    const partnerMap = new Map<string, ConversationSummary>();
 
     for (const msg of userMessages.sort(
       (a, b) => b.createdAt.getTime() - a.createdAt.getTime()

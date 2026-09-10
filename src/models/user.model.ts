@@ -1,7 +1,15 @@
-import { users, type User, type NewUser } from "../db/schema/users";
-import { userSessions, type UserSession, type NewUserSession } from "../db/schema/user-sessions";
-import { otpVerifications, type OtpVerification, type NewOtpVerification } from "../db/schema/otp-verifications";
-import { socialAccounts, type SocialAccount, type NewSocialAccount } from "../db/schema/social-accounts";
+import {
+  users,
+  type User,
+  type NewUser,
+  userSessions,
+  type UserSession,
+  type NewUserSession,
+  otpVerifications,
+  type OtpVerification,
+  type NewOtpVerification,
+} from "../db/schema";
+import type { SocialAccount, NewSocialAccount } from "../types";
 
 export {
   users,
@@ -10,8 +18,6 @@ export {
   userSessions as UserSessionModel,
   otpVerifications,
   otpVerifications as OtpVerificationModel,
-  socialAccounts,
-  socialAccounts as SocialAccountModel,
   type User,
   type NewUser,
   type UserSession,

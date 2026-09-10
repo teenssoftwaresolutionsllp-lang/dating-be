@@ -1,4 +1,4 @@
-import { count, eq, ilike, inArray } from "drizzle-orm";
+import { count, eq, inArray } from "drizzle-orm";
 import { db } from "../db/index";
 import {
   education,
@@ -18,7 +18,6 @@ import { interests } from "../db/schema/interests.schema";
 import { profileInterests } from "../db/schema/profile-interests.schema";
 import { profilePhotos } from "../db/schema/profile-photos.schema";
 import { languages } from "../db/schema/languages.schema";
-import { locations, type Location } from "../db/schema/locations.schema";
 import { profileLanguages } from "../db/schema/profile-languages.schema";
 import {
   profiles,
@@ -35,7 +34,6 @@ export type ProfileUpdate = Partial<
     | "gender"
     | "height"
     | "location"
-    | "locationId"
     | "relationshipStatus"
     | "bio"
   >
@@ -102,27 +100,6 @@ class ProfileRepository {
         updatedAt: new Date(),
       })
       .where(eq(users.user_id, userId));
-  }
-
-  async findLocations(search?: string): Promise<Location[]> {
-    if (!search) {
-      return db.select().from(locations).limit(50);
-    }
-
-    return db
-      .select()
-      .from(locations)
-      .where(ilike(locations.name, `%${search}%`))
-      .limit(50);
-  }
-
-  async findLocationById(locationId: string): Promise<Location | undefined> {
-    const [location] = await db
-      .select()
-      .from(locations)
-      .where(eq(locations.id, locationId));
-
-    return location;
   }
 
   async findInterests(): Promise<(typeof interests.$inferSelect)[]> {

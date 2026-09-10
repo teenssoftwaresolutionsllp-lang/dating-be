@@ -2,7 +2,6 @@ export * from "./users.schema";
 export * from "./otp-verifications.schema";
 export * from "./sessions.schema";
 export * from "./profiles.schema";
-export * from "./locations.schema";
 export * from "./languages.schema";
 export * from "./profile-languages.schema";
 export * from "./education.schema";

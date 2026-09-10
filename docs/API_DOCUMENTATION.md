@@ -26,7 +26,6 @@ The API currently supports:
 - profile language selection
 - education
 - KYC status and submission
-- locations
 - dating preferences
 - onboarding completion validation
 
@@ -150,7 +149,7 @@ Use this order to test the complete currently implemented flow:
 4. Save basic profile details
 5. Check onboarding status
 6. Get the saved profile
-7. Get locations, languages, and interests
+7. Get languages and interests
 8. Save profile location and relationship details
 9. Save selected languages
 10. Save education
@@ -588,8 +587,7 @@ Expected response after saving data:
       "dateOfBirth": "1998-06-15",
       "gender": "male",
       "height": 175,
-      "location": null,
-      "locationId": "location-uuid",
+      "location": "Kolkata",
       "relationshipStatus": "single",
       "bio": null
     }
@@ -641,7 +639,7 @@ Example location body:
 
 ```json
 {
-  "locationId": "location-uuid"
+  "location": "Kolkata"
 }
 ```
 
@@ -654,7 +652,6 @@ Optional supported profile fields:
   "gender": "male",
   "height": 175,
   "location": "Kolkata",
-  "locationId": "location-uuid",
   "relationshipStatus": "single",
   "bio": "Short profile biography"
 }
@@ -667,8 +664,7 @@ Validation:
 - date cannot be in the future
 - height must be between 100 and 250 cm
 - text lengths are limited
-- `locationId` must be a valid UUID
-- the selected location must exist in the `locations` table
+- location is stored as a text value for now
 
 Expected response:
 
@@ -683,47 +679,7 @@ Expected response:
 }
 ```
 
-### 9.4 List locations
-
-```http
-GET {{baseUrl}}/api/v1/locations
-```
-
-Optional search:
-
-```http
-GET {{baseUrl}}/api/v1/locations?search=kol
-```
-
-Purpose:
-
-- returns predefined location master data
-- provides locations for an onboarding dropdown/search screen
-- does not allow normal users to create arbitrary locations
-
-Expected response:
-
-```json
-{
-  "success": true,
-  "statusCode": 200,
-  "message": "Locations retrieved successfully",
-  "data": {
-    "locations": [
-      {
-        "id": "location-uuid",
-        "name": "Kolkata",
-        "countryCode": "IN",
-        "createdAt": "2026-09-10T10:00:00.000Z"
-      }
-    ]
-  }
-}
-```
-
-The locations table currently needs approved master data to be seeded before this endpoint returns useful results.
-
-### 9.5 List languages
+### 9.4 List languages
 
 ```http
 GET {{baseUrl}}/api/v1/languages
@@ -753,7 +709,7 @@ Expected response:
 }
 ```
 
-### 9.6 Save profile languages
+### 9.5 Save profile languages
 
 ```http
 PUT {{baseUrl}}/api/v1/profile/languages
@@ -795,7 +751,7 @@ Expected response:
 }
 ```
 
-### 9.7 Save education
+### 9.6 Save education
 
 ```http
 PUT {{baseUrl}}/api/v1/profile/education
@@ -834,7 +790,7 @@ Expected response:
 }
 ```
 
-### 9.8 Submit KYC
+### 9.7 Submit KYC
 
 ```http
 POST {{baseUrl}}/api/v1/kyc
@@ -872,7 +828,7 @@ Expected response:
 
 The raw document number and stored hash are never returned.
 
-### 9.9 Get KYC status
+### 9.8 Get KYC status
 
 ```http
 GET {{baseUrl}}/api/v1/kyc
@@ -904,7 +860,7 @@ verified
 rejected
 ```
 
-### 9.10 List interests
+### 9.9 List interests
 
 ```http
 GET {{baseUrl}}/api/v1/interests
@@ -935,7 +891,7 @@ Expected response:
 }
 ```
 
-### 9.11 Save profile interests
+### 9.10 Save profile interests
 
 ```http
 PUT {{baseUrl}}/api/v1/profile/interests
@@ -970,7 +926,7 @@ Expected response:
 }
 ```
 
-### 9.12 Save dating preferences
+### 9.11 Save dating preferences
 
 ```http
 PATCH {{baseUrl}}/api/v1/dating-preferences
@@ -1017,7 +973,7 @@ Expected response:
 }
 ```
 
-### 9.13 Complete onboarding
+### 9.12 Complete onboarding
 
 ```http
 POST {{baseUrl}}/api/v1/onboarding/complete
@@ -1070,7 +1026,7 @@ Current completion requirements:
 - basic profile fields
 - date of birth
 - height
-- location reference
+- location text
 - relationship status
 - at least one language
 - education
@@ -1090,7 +1046,6 @@ Create a Postman environment with:
 | `baseUrl`     | `http://localhost:5000` | Backend URL                          |
 | `accessToken` | empty                   | Current JWT access token             |
 | `devOtp`      | empty                   | Development OTP returned by send-otp |
-| `locationId`  | empty                   | Selected location UUID               |
 
 Recommended Postman request order:
 
@@ -1101,16 +1056,15 @@ Recommended Postman request order:
 5. `GET {{baseUrl}}/api/v1/onboarding/status`
 6. `PATCH {{baseUrl}}/api/v1/profile`
 7. `GET {{baseUrl}}/api/v1/profile/me`
-8. `GET {{baseUrl}}/api/v1/locations`
-9. `GET {{baseUrl}}/api/v1/languages`
-10. `PUT {{baseUrl}}/api/v1/profile/languages`
-11. `PUT {{baseUrl}}/api/v1/profile/education`
-12. `POST {{baseUrl}}/api/v1/kyc`
-13. `GET {{baseUrl}}/api/v1/kyc`
-14. `GET {{baseUrl}}/api/v1/interests`
-15. `PUT {{baseUrl}}/api/v1/profile/interests`
-16. `PATCH {{baseUrl}}/api/v1/dating-preferences`
-17. `POST {{baseUrl}}/api/v1/onboarding/complete`
+8. `GET {{baseUrl}}/api/v1/languages`
+9. `PUT {{baseUrl}}/api/v1/profile/languages`
+10. `PUT {{baseUrl}}/api/v1/profile/education`
+11. `POST {{baseUrl}}/api/v1/kyc`
+12. `GET {{baseUrl}}/api/v1/kyc`
+13. `GET {{baseUrl}}/api/v1/interests`
+14. `PUT {{baseUrl}}/api/v1/profile/interests`
+15. `PATCH {{baseUrl}}/api/v1/dating-preferences`
+16. `POST {{baseUrl}}/api/v1/onboarding/complete`
 
 ## 11. Error Testing in Postman
 
@@ -1146,21 +1100,17 @@ Send:
 
 Expected status: `400`.
 
-### Invalid location ID
+### Invalid location value
 
-Send a random UUID in the profile request:
+Send an empty location value in the profile request:
 
 ```json
 {
-  "locationId": "00000000-0000-0000-0000-000000000000"
+  "location": ""
 }
 ```
 
-Expected code:
-
-```text
-INVALID_LOCATION_ID
-```
+Expected status: `400` with validation error.
 
 ### Duplicate language IDs
 
@@ -1241,7 +1191,6 @@ users.onboarding_completed_at
 | `users`              | Account status and onboarding progress     |
 | `user_sessions`      | Authenticated sessions                     |
 | `profiles`           | Core profile details                       |
-| `locations`          | Predefined location master data            |
 | `languages`          | Predefined language master data            |
 | `profile_languages`  | User-language relationships                |
 | `education`          | One education record per user              |
@@ -1254,10 +1203,10 @@ users.onboarding_completed_at
 ## 14. Known Limitations
 
 1. The refresh endpoint currently reads the refresh token from an HTTP-only cookie. React Native body-token refresh support is not implemented yet.
-2. The locations table requires approved seed data before location search returns useful results.
-3. The languages and interests tables also require master data to be inserted before selection requests can succeed.
-4. Photo routes are not implemented because no object-storage provider is configured.
-5. KYC submission creates a `pending` record, but no admin verification workflow exists yet to change it to `verified`.
+2. Languages and interests require master data to be inserted before selection requests can succeed.
+3. Photo routes are not implemented because no object-storage provider is configured.
+4. KYC submission creates a `pending` record, but no admin verification workflow exists yet to change it to `verified`.
+5. Location search and predefined location IDs are intentionally deferred; onboarding currently stores the selected location as text in `profiles.location`.
 6. The current documentation reflects the implemented API and should be updated whenever a new route is added.
 
 ## 15. Implementation Verification

@@ -78,18 +78,6 @@ export class ProfileController {
     });
   }
 
-  static async getLocations(req: Request, res: Response): Promise<Response> {
-    const search =
-      typeof req.query.search === "string" ? req.query.search : undefined;
-    const locations = await ProfileService.getLocations(search);
-
-    return ApiResponse.success(res, {
-      statusCode: 200,
-      message: "Locations retrieved successfully",
-      data: { locations },
-    });
-  }
-
   static async getInterests(_req: Request, res: Response): Promise<Response> {
     const interests = await ProfileService.getInterests();
 

@@ -65,18 +65,6 @@ class ProfileService {
 
     const existingProfile = await ProfileRepository.findByUserId(userId);
 
-    if (values.locationId) {
-      const location = await ProfileRepository.findLocationById(
-        values.locationId,
-      );
-      if (!location) {
-        const error = new Error("Location not found") as AppError;
-        error.statusCode = 400;
-        error.code = "INVALID_LOCATION_ID";
-        throw error;
-      }
-    }
-
     const mergedProfile = {
       ...existingProfile,
       ...values,
@@ -85,10 +73,6 @@ class ProfileService {
     const nextStep = this.getNextStep(mergedProfile, status.onboardingStep);
 
     return ProfileRepository.saveProfileAndStep(userId, values, nextStep);
-  }
-
-  async getLocations(search?: string) {
-    return ProfileRepository.findLocations(search);
   }
 
   async getLanguages(): Promise<Language[]> {
@@ -259,7 +243,7 @@ class ProfileService {
       missingSteps.push("BASIC_DETAILS");
     }
 
-    if (!data.profile?.locationId) {
+    if (!data.profile?.location) {
       missingSteps.push("LOCATION");
     }
 
@@ -320,7 +304,7 @@ class ProfileService {
       profile.gender &&
       profile.dateOfBirth &&
       profile.height &&
-      (profile.location || profile.locationId)
+      profile.location
     ) {
       nextStep = "RELATIONSHIP";
     }
@@ -330,7 +314,7 @@ class ProfileService {
       profile.gender &&
       profile.dateOfBirth &&
       profile.height &&
-      (profile.location || profile.locationId) &&
+      profile.location &&
       profile.relationshipStatus
     ) {
       nextStep = "LANGUAGES";

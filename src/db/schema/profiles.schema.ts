@@ -8,7 +8,6 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { users } from "./users.schema";
-import { locations } from "./locations.schema";
 
 export const profiles = pgTable("profiles", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -21,9 +20,6 @@ export const profiles = pgTable("profiles", {
   gender: varchar("gender", { length: 20 }),
   height: smallint("height"),
   location: varchar("location", { length: 150 }),
-  locationId: uuid("location_id").references(() => locations.id, {
-    onDelete: "set null",
-  }),
   relationshipStatus: varchar("relationship_status", { length: 30 }),
   bio: text("bio"),
   createdAt: timestamp("created_at", { withTimezone: true })

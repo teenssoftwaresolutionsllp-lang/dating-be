@@ -17,7 +17,6 @@ export const profileUpdateSchema = z
     gender: z.string().trim().min(1).max(20).optional(),
     height: z.number().int().min(100).max(250).optional(),
     location: z.string().trim().min(1).max(150).optional(),
-    locationId: z.string().uuid().optional(),
     relationshipStatus: z.string().trim().min(1).max(30).optional(),
     bio: z.string().trim().max(1000).optional(),
   })

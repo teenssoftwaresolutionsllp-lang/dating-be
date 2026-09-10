@@ -38,7 +38,6 @@ router.patch(
 
 // Return predefined reference data for onboarding selection controls.
 router.get("/languages", asyncHandler(ProfileController.getLanguages));
-router.get("/locations", asyncHandler(ProfileController.getLocations));
 router.get("/interests", asyncHandler(ProfileController.getInterests));
 
 // Replace the authenticated user's complete language selection.

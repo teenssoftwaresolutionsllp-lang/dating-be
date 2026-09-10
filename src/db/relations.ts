@@ -7,7 +7,6 @@ import { education } from "./schema/education.schema";
 import { interests } from "./schema/interests.schema";
 import { kycVerifications } from "./schema/kyc.schema";
 import { languages } from "./schema/languages.schema";
-import { locations } from "./schema/locations.schema";
 import { matches } from "./schema/matches.schema";
 import { messageReads } from "./schema/message-reads.schema";
 import { messages } from "./schema/messages.schema";
@@ -55,16 +54,8 @@ export const usersRelations = relations(users, ({ many, one }) => ({
 
 export const profilesRelations = relations(profiles, ({ many, one }) => ({
   user: one(users, { fields: [profiles.userId], references: [users.user_id] }),
-  location: one(locations, {
-    fields: [profiles.locationId],
-    references: [locations.id],
-  }),
   languages: many(profileLanguages),
   interests: many(profileInterests),
-}));
-
-export const locationsRelations = relations(locations, ({ many }) => ({
-  profiles: many(profiles),
 }));
 
 export const languagesRelations = relations(languages, ({ many }) => ({

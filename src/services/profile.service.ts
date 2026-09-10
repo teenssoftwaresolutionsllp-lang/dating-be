@@ -1,13 +1,14 @@
 import { createHash } from "node:crypto";
-import { unlink } from "node:fs/promises";
-import path from "node:path";
 import type { Profile } from "../db/schema/profiles.schema";
 import type { Language } from "../db/schema/languages.schema";
 import ProfileRepository, {
   type ProfileUpdate,
 } from "../repositories/profile.repository";
 import type { AppError } from "../types/index";
-import { uploadDirectory } from "../middleware/photo-upload.middleware";
+import {
+  deleteCloudinaryAsset,
+  uploadProfilePhoto,
+} from "./cloudinary.service";
 
 export const ONBOARDING_STEPS = [
   "BASIC_DETAILS",
@@ -35,17 +36,30 @@ const createNotFoundError = (message: string): AppError => {
 class ProfileService {
   async addPhoto(userId: string, file: Express.Multer.File) {
     const existingPhotos = await ProfileRepository.findPhotosByUserId(userId);
-    const storageKey = file.filename;
-    const photo = await ProfileRepository.createProfilePhoto({
+    const uploadedAsset = await uploadProfilePhoto(
+      file.buffer,
       userId,
-      storageKey,
-      url: `/uploads/profile-photos/${file.filename}`,
-      displayOrder: existingPhotos.length,
-      isPrimary: existingPhotos.length === 0,
-      verificationStatus: "pending",
-    });
+      file.originalname,
+    );
 
-    return photo;
+    try {
+      return await ProfileRepository.createProfilePhoto({
+        userId,
+        storageKey: uploadedAsset.public_id,
+        url: uploadedAsset.secure_url,
+        displayOrder: existingPhotos.length,
+        isPrimary: existingPhotos.length === 0,
+        verificationStatus: "pending",
+      });
+    } catch (error) {
+      try {
+        await deleteCloudinaryAsset(uploadedAsset.public_id);
+      } catch (cleanupError) {
+        console.error("Failed to clean up Cloudinary photo:", cleanupError);
+      }
+
+      throw error;
+    }
   }
 
   async getPhotos(userId: string) {
@@ -53,7 +67,7 @@ class ProfileService {
   }
 
   async deletePhoto(userId: string, photoId: string): Promise<void> {
-    const photo = await ProfileRepository.deleteProfilePhoto(userId, photoId);
+    const photo = await ProfileRepository.findProfilePhotoById(userId, photoId);
 
     if (!photo) {
       const error = new Error("Photo not found") as AppError;
@@ -62,15 +76,20 @@ class ProfileService {
       throw error;
     }
 
-    const filePath = path.join(uploadDirectory, photo.storageKey);
     try {
-      await unlink(filePath);
-    } catch (error: unknown) {
-      const fileError = error as { code?: string };
-      if (fileError.code !== "ENOENT") {
-        console.error("Failed to remove profile photo file:", error);
-      }
+      await deleteCloudinaryAsset(photo.storageKey);
+    } catch (error) {
+      const cleanupError = new Error(
+        "Could not delete the photo from Cloudinary",
+      ) as AppError;
+      cleanupError.statusCode = 502;
+      cleanupError.code = "PHOTO_STORAGE_DELETE_FAILED";
+      cleanupError.errors =
+        process.env.NODE_ENV === "development" ? error : undefined;
+      throw cleanupError;
     }
+
+    await ProfileRepository.deleteProfilePhoto(userId, photoId);
   }
 
   async getOnboardingStatus(userId: string): Promise<{

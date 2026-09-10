@@ -51,6 +51,20 @@ class ProfileRepository {
       .where(eq(profilePhotos.userId, userId));
   }
 
+  async findProfilePhotoById(
+    userId: string,
+    photoId: string,
+  ): Promise<ProfilePhoto | undefined> {
+    const [photo] = await db
+      .select()
+      .from(profilePhotos)
+      .where(
+        and(eq(profilePhotos.id, photoId), eq(profilePhotos.userId, userId)),
+      );
+
+    return photo;
+  }
+
   async createProfilePhoto(values: NewProfilePhoto): Promise<ProfilePhoto> {
     return db.transaction(async (transaction) => {
       const [photo] = await transaction

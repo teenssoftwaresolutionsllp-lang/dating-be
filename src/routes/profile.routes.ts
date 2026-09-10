@@ -2,7 +2,10 @@ import { Router } from "express";
 import ProfileController from "../controllers/profile.controller";
 import { authenticate } from "../middleware/auth.middleware";
 import { asyncHandler } from "../middleware/error.middleware";
-import { uploadProfilePhoto } from "../middleware/photo-upload.middleware";
+import {
+  handlePhotoUploadError,
+  uploadProfilePhoto,
+} from "../middleware/photo-upload.middleware";
 import { validateBody } from "../middleware/validation.middleware";
 import { profileUpdateSchema } from "../validation/profile.validation";
 import {
@@ -37,11 +40,12 @@ router.patch(
   asyncHandler(ProfileController.updateProfile),
 );
 
-// Store a profile image on local disk and save its metadata in PostgreSQL.
+// Upload a profile image to Cloudinary and save its metadata in PostgreSQL.
 router.post(
   "/profile/photos",
   authenticate,
   uploadProfilePhoto.single("photo"),
+  handlePhotoUploadError,
   asyncHandler(ProfileController.uploadPhoto),
 );
 

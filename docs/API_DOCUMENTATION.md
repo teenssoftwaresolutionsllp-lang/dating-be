@@ -31,7 +31,7 @@ The API currently supports:
 
 The following features are not implemented yet:
 
-- local profile photo upload
+- Cloudinary profile photo upload
 - admin verification workflow
 - KYC approval workflow
 - complete integration test suite
@@ -81,6 +81,16 @@ Run the database migrations before testing database-backed routes:
 ```bash
 npm run db:migrate
 ```
+
+For Cloudinary profile photo uploads, configure these backend-only environment variables:
+
+```env
+CLOUDINARY_CLOUD_NAME=your_cloud_name
+CLOUDINARY_API_KEY=your_api_key
+CLOUDINARY_API_SECRET=your_api_secret
+```
+
+Replace the placeholder values with real Cloudinary credentials before testing uploads. Never expose `CLOUDINARY_API_SECRET` to the frontend or commit it to source control.
 
 ## 4. Common Headers
 
@@ -161,7 +171,7 @@ Use this order to test the complete currently implemented flow:
 17. Try onboarding completion
 18. Test logout or logout-all
 
-The completion request will report `PHOTOS` as missing until at least one local photo is uploaded.
+The completion request will report `PHOTOS` as missing until at least one profile photo is uploaded to Cloudinary.
 
 ## 7. Health and Root Routes
 
@@ -680,7 +690,7 @@ Expected response:
 }
 ```
 
-### 9.4 Upload a profile photo
+### 9.4 Upload a profile photo to Cloudinary
 
 ```http
 POST {{baseUrl}}/api/v1/profile/photos
@@ -689,8 +699,8 @@ POST {{baseUrl}}/api/v1/profile/photos
 Purpose:
 
 - accepts one profile image as `multipart/form-data`
-- stores the image in the local `uploads/profile-photos` directory
-- stores only photo metadata and the local URL in `profile_photos`
+- uploads the image to Cloudinary using the authenticated user's folder
+- stores the Cloudinary `public_id` and `secure_url` in `profile_photos`
 - marks the first uploaded photo as the primary photo
 - advances onboarding progress to `PHOTOS`
 
@@ -714,8 +724,8 @@ Expected response:
     "photo": {
       "id": "photo-uuid",
       "userId": "user-uuid",
-      "storageKey": "generated-file-name.jpg",
-      "url": "/uploads/profile-photos/generated-file-name.jpg",
+      "storageKey": "dating-app/profiles/user-uuid/user-uuid-1234567890",
+      "url": "https://res.cloudinary.com/example/image/upload/v123/dating-app/profiles/user-uuid/user-uuid-1234567890.jpg",
       "displayOrder": 0,
       "isPrimary": true,
       "verificationStatus": "pending"
@@ -724,10 +734,12 @@ Expected response:
 }
 ```
 
-The image can be opened using:
+The image can be opened directly using the returned Cloudinary `url`.
+
+Cloudinary folder format:
 
 ```text
-{{baseUrl}}/uploads/profile-photos/generated-file-name.jpg
+dating-app/profiles/{userId}
 ```
 
 ### 9.5 Get profile photos
@@ -769,7 +781,7 @@ DELETE {{baseUrl}}/api/v1/profile/photos/:photoId
 Purpose:
 
 - deletes the selected photo metadata
-- removes the corresponding local file
+- deletes the Cloudinary asset using the stored `storageKey`
 - checks that the photo belongs to the authenticated user before deleting
 
 Example:
@@ -1142,7 +1154,7 @@ Current completion requirements:
 - at least one interest
 - dating preferences
 
-This endpoint reports `PHOTOS` as missing until at least one profile photo is uploaded.
+This endpoint reports `PHOTOS` as missing until at least one profile photo is uploaded to Cloudinary.
 
 ## 10. Postman Environment Setup
 
@@ -1302,7 +1314,7 @@ users.onboarding_completed_at
 | `profile_languages`  | User-language relationships            |
 | `education`          | One education record per user          |
 | `kyc_verifications`  | Hashed KYC submission and status       |
-| `profile_photos`     | Local profile photo metadata           |
+| `profile_photos`     | Cloudinary profile photo metadata      |
 | `interests`          | Predefined interest master data        |
 | `profile_interests`  | User-interest relationships            |
 | `dating_preferences` | One preference record per user         |
@@ -1311,7 +1323,7 @@ users.onboarding_completed_at
 
 1. The refresh endpoint currently reads the refresh token from an HTTP-only cookie. React Native body-token refresh support is not implemented yet.
 2. Languages and interests require master data to be inserted before selection requests can succeed.
-3. Profile photos currently use local disk storage and should move to object storage for production deployment.
+3. Profile photos are stored in Cloudinary; the local filesystem is not used for new profile photo uploads.
 4. KYC submission creates a `pending` record, but no admin verification workflow exists yet to change it to `verified`.
 5. Location search and predefined location IDs are intentionally deferred; onboarding currently stores the selected location as text in `profiles.location`.
 6. The current documentation reflects the implemented API and should be updated whenever a new route is added.

@@ -1,10 +1,10 @@
 import type { Request, Response, NextFunction } from "express";
 import { verifyAccessToken } from "../utils/jwt";
 import { db } from "../db/index";
-import { users } from "../db/schema/users";
+import { users } from "../db/schema";
 import { eq } from "drizzle-orm";
 import ApiResponse from "../utils/response";
-import type { TokenPayload } from "../types/index";
+import type { TokenPayload, SafeUser } from "../types/index";
 
 /**
  * Authenticate JWT Access Token
@@ -41,14 +41,17 @@ export const authenticate = async (
     const [user] = await db
       .select({
         id: users.id,
-        phone: users.phone,
-        countryCode: users.countryCode,
         email: users.email,
-        preferredLanguage: users.preferredLanguage,
+        phone: users.phone,
         role: users.role,
-        isVerified: users.isVerified,
-        isActive: users.isActive,
-        profileCompleted: users.profileCompleted,
+        status: users.status,
+        emailVerified: users.emailVerified,
+        phoneVerified: users.phoneVerified,
+        authProvider: users.authProvider,
+        lastLoginAt: users.lastLoginAt,
+        lastActiveAt: users.lastActiveAt,
+        createdAt: users.createdAt,
+        updatedAt: users.updatedAt,
       })
       .from(users)
       .where(eq(users.id, decoded.id));
@@ -61,7 +64,7 @@ export const authenticate = async (
       });
     }
 
-    if (!user.isActive) {
+    if (user.status !== "active") {
       return ApiResponse.error(res, {
         statusCode: 403,
         message: "User account is suspended or deactivated",
@@ -69,7 +72,7 @@ export const authenticate = async (
       });
     }
 
-    req.user = user;
+    req.user = user as SafeUser;
     return next();
   } catch (error: unknown) {
     const err = error as { name?: string };
@@ -108,20 +111,23 @@ export const optionalAuth = async (
         const [user] = await db
           .select({
             id: users.id,
-            phone: users.phone,
-            countryCode: users.countryCode,
             email: users.email,
-            preferredLanguage: users.preferredLanguage,
+            phone: users.phone,
             role: users.role,
-            isVerified: users.isVerified,
-            isActive: users.isActive,
-            profileCompleted: users.profileCompleted,
+            status: users.status,
+            emailVerified: users.emailVerified,
+            phoneVerified: users.phoneVerified,
+            authProvider: users.authProvider,
+            lastLoginAt: users.lastLoginAt,
+            lastActiveAt: users.lastActiveAt,
+            createdAt: users.createdAt,
+            updatedAt: users.updatedAt,
           })
           .from(users)
           .where(eq(users.id, decoded.id));
 
-        if (user && user.isActive) {
-          req.user = user;
+        if (user && user.status === "active") {
+          req.user = user as SafeUser;
         }
       }
     }

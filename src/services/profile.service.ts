@@ -1,5 +1,5 @@
 import { db } from "../db/index";
-import { users } from "../db/schema/users";
+import { users } from "../db/schema";
 import { eq } from "drizzle-orm";
 import type {
   AppError,
@@ -10,23 +10,23 @@ import type {
 } from "../types/index";
 
 /**
- * In-memory profile store (replace with DB table once schema is migrated)
+ * In-memory profile store (used by controllers pending service layer DB wiring)
  * Maps userId -> ProfileData
  */
-const profileStore = new Map<number, ProfileData>();
+const profileStore = new Map<string, ProfileData>();
 
 export class ProfileService {
   /**
    * Get a user's profile by userId
    */
-  static async getProfile(userId: number): Promise<ProfileData> {
+  static async getProfile(userId: string): Promise<ProfileData> {
     // Verify user exists in DB
     const [user] = await db
-      .select({ id: users.id, isActive: users.isActive })
+      .select({ id: users.id, status: users.status })
       .from(users)
       .where(eq(users.id, userId));
 
-    if (!user || !user.isActive) {
+    if (!user || user.status === "deleted") {
       const error = new Error("User not found") as AppError;
       error.statusCode = 404;
       error.code = "USER_NOT_FOUND";
@@ -126,13 +126,11 @@ export class ProfileService {
 
     profileStore.set(userId, updated);
 
-    // Mark profile as completed in users table if essential fields are present
-    if (updated.displayName && updated.birthDate && updated.gender) {
-      await db
-        .update(users)
-        .set({ profileCompleted: true, updatedAt: new Date() })
-        .where(eq(users.id, userId));
-    }
+    // Update timestamp in users table
+    await db
+      .update(users)
+      .set({ updatedAt: new Date() })
+      .where(eq(users.id, userId));
 
     return updated;
   }

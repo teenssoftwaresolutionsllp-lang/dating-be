@@ -1,8 +1,5 @@
 import type { Request } from "express";
-import type { users } from "../db/schema/users";
-import type { otpVerifications } from "../db/schema/otp-verifications";
-import type { userSessions } from "../db/schema/user-sessions";
-import type { socialAccounts } from "../db/schema/social-accounts";
+import type { users, otpVerifications, userSessions } from "../db/schema";
 
 // Database Inferred Models
 export type User = typeof users.$inferSelect;
@@ -14,20 +11,31 @@ export type NewOtpVerification = typeof otpVerifications.$inferInsert;
 export type UserSession = typeof userSessions.$inferSelect;
 export type NewUserSession = typeof userSessions.$inferInsert;
 
-export type SocialAccount = typeof socialAccounts.$inferSelect;
-export type NewSocialAccount = typeof socialAccounts.$inferInsert;
+export interface SocialAccount {
+  id: string;
+  userId: string;
+  provider: string;
+  providerUserId: string;
+}
+export type NewSocialAccount = Partial<SocialAccount>;
 
-// Safe User (sanitized payload without password)
+// Safe User (sanitized payload without sensitive password hash)
 export interface SafeUser {
-  id: number;
-  phone: string | null;
-  countryCode: string;
-  email?: string | null;
-  preferredLanguage: string;
+  id: string;
+  email: string;
+  phone?: string | null;
+  countryCode?: string;
+  preferredLanguage?: string;
   role: string;
-  isVerified: boolean;
+  status: string;
+  isVerified?: boolean;
   isActive?: boolean;
-  profileCompleted: boolean;
+  emailVerified: boolean;
+  phoneVerified: boolean;
+  authProvider: string;
+  profileCompleted?: boolean;
+  lastLoginAt?: Date | null;
+  lastActiveAt?: Date | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -42,7 +50,7 @@ export interface SupportedLanguage {
 
 // Token Interfaces
 export interface TokenPayload {
-  id: number;
+  id: string;
   phone?: string | null;
   email?: string | null;
   role: string;
@@ -50,7 +58,7 @@ export interface TokenPayload {
 }
 
 export interface RefreshTokenPayload {
-  id: number;
+  id: string;
   type: string;
   [key: string]: unknown;
 }
@@ -111,11 +119,11 @@ export interface RefreshTokenParams {
 
 export interface LogoutParams {
   refreshToken?: string;
-  userId?: number;
+  userId?: string;
 }
 
 export interface SetLanguageParams {
-  userId: number;
+  userId: string;
   language: string;
 }
 
@@ -169,7 +177,7 @@ export interface OptionalAuthRequest extends Request {
 // Profile Domain Types
 // =================================================================
 export interface ProfileData {
-  userId: number;
+  userId: string;
   displayName?: string | null;
   bio?: string | null;
   birthDate?: string | null;
@@ -187,7 +195,7 @@ export interface ProfileData {
 }
 
 export interface UpdateProfileParams {
-  userId: number;
+  userId: string;
   displayName?: string;
   bio?: string;
   birthDate?: string;
@@ -202,12 +210,12 @@ export interface UpdateProfileParams {
 }
 
 export interface AddPhotoParams {
-  userId: number;
+  userId: string;
   photoUrl: string;
 }
 
 export interface DeletePhotoParams {
-  userId: number;
+  userId: string;
   photoUrl: string;
 }
 
@@ -217,29 +225,29 @@ export interface DeletePhotoParams {
 export type SwipeDirection = "like" | "dislike" | "superlike";
 
 export interface SwipeParams {
-  userId: number;
-  targetUserId: number;
+  userId: string;
+  targetUserId: string;
   direction: SwipeDirection;
 }
 
 export interface SwipeResult {
   direction: SwipeDirection;
   isMatch: boolean;
-  matchId?: number;
+  matchId?: string;
   targetUser?: Pick<SafeUser, "id" | "phone">;
 }
 
 export interface MatchRecord {
-  id: number;
-  userId: number;
-  targetUserId: number;
+  id: string;
+  userId: string;
+  targetUserId: string;
   direction: SwipeDirection;
   isMatch: boolean;
   createdAt: Date;
 }
 
 export interface GetMatchesParams {
-  userId: number;
+  userId: string;
   page?: number;
   limit?: number;
 }
@@ -256,16 +264,16 @@ export interface PaginatedResult<T> {
 // Message Domain Types
 // =================================================================
 export interface SendMessageParams {
-  senderId: number;
-  receiverId: number;
+  senderId: string;
+  receiverId: string;
   content: string;
   messageType?: "text" | "image" | "audio";
 }
 
 export interface MessageRecord {
-  id: number;
-  senderId: number;
-  receiverId: number;
+  id: string;
+  senderId: string;
+  receiverId: string;
   content: string;
   messageType: string;
   isRead: boolean;
@@ -275,14 +283,14 @@ export interface MessageRecord {
 }
 
 export interface GetConversationParams {
-  userId: number;
-  otherUserId: number;
+  userId: string;
+  otherUserId: string;
   page?: number;
   limit?: number;
 }
 
 export interface ConversationSummary {
-  userId: number;
+  userId: string;
   displayName?: string | null;
   lastMessage?: string;
   lastMessageAt?: Date;
@@ -290,8 +298,8 @@ export interface ConversationSummary {
 }
 
 export interface DeleteMessageParams {
-  messageId: number;
-  userId: number;
+  messageId: string;
+  userId: string;
 }
 
 // =================================================================
@@ -306,7 +314,7 @@ export interface AdminUserListParams {
 }
 
 export interface AdminUserRecord extends SafeUser {
-  email?: string | null;
+  email: string;
   isActive?: boolean;
   createdAt?: Date;
 }
@@ -321,7 +329,7 @@ export interface DashboardStats {
 }
 
 export interface BanUserParams {
-  adminId: number;
-  targetUserId: number;
+  adminId: string;
+  targetUserId: string;
   reason?: string;
 }

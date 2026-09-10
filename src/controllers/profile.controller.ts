@@ -95,9 +95,9 @@ export class ProfileController {
    * Get another user's public profile
    */
   static async getUserProfile(req: Request, res: Response): Promise<Response> {
-    const targetUserId = parseInt(String(req.params.userId), 10);
+    const targetUserId = String(req.params.userId);
 
-    if (isNaN(targetUserId)) {
+    if (!targetUserId) {
       return ApiResponse.error(res, {
         statusCode: 400,
         message: "Invalid user ID",

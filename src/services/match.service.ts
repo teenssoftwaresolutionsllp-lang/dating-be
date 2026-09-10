@@ -1,6 +1,6 @@
 import { db } from "../db/index";
-import { users } from "../db/schema/users";
-import { eq, and, or, desc, count } from "drizzle-orm";
+import { users } from "../db/schema";
+import { eq } from "drizzle-orm";
 import type {
   AppError,
   SwipeParams,
@@ -12,7 +12,7 @@ import type {
 } from "../types/index";
 
 /**
- * In-memory match store (replace with a real DB table once schema is migrated)
+ * In-memory match store (used by match controllers pending DB query integration)
  * Structure: Map<`${userId}-${targetUserId}`, MatchRecord>
  */
 const swipeStore = new Map<string, MatchRecord>();
@@ -36,11 +36,11 @@ export class MatchService {
 
     // Verify target user exists
     const [targetUser] = await db
-      .select({ id: users.id, phone: users.phone, isActive: users.isActive })
+      .select({ id: users.id, phone: users.phone, status: users.status })
       .from(users)
       .where(eq(users.id, targetUserId));
 
-    if (!targetUser || !targetUser.isActive) {
+    if (!targetUser || targetUser.status !== "active") {
       const error = new Error("Target user not found or inactive") as AppError;
       error.statusCode = 404;
       error.code = "USER_NOT_FOUND";
@@ -60,7 +60,7 @@ export class MatchService {
 
     const now = new Date();
     const record: MatchRecord = {
-      id: matchIdCounter++,
+      id: `match_${matchIdCounter++}`,
       userId,
       targetUserId,
       direction,
@@ -72,7 +72,7 @@ export class MatchService {
 
     // Check if the other user already liked us back
     let isMatch = false;
-    let matchId: number | undefined;
+    let matchId: string | undefined;
 
     if (direction === "like" || direction === "superlike") {
       const reverseKey = `${targetUserId}-${userId}`;
@@ -127,7 +127,7 @@ export class MatchService {
   /**
    * Remove a match (unmatch)
    */
-  static async unmatch(userId: number, matchedUserId: number): Promise<void> {
+  static async unmatch(userId: string, matchedUserId: string): Promise<void> {
     const keyA = `${userId}-${matchedUserId}`;
     const keyB = `${matchedUserId}-${userId}`;
 
@@ -149,7 +149,7 @@ export class MatchService {
    * Get swipe history for a user
    */
   static async getSwipeHistory(
-    userId: number,
+    userId: string,
     direction?: SwipeDirection
   ): Promise<MatchRecord[]> {
     return Array.from(swipeStore.values())

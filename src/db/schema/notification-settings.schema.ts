@@ -6,7 +6,7 @@ export const notificationSettings = pgTable("notification_settings", {
   userId: uuid("user_id")
     .notNull()
     .unique()
-    .references(() => users.id, { onDelete: "cascade" }),
+    .references(() => users.user_id, { onDelete: "cascade" }),
   newMatches: boolean("new_matches").notNull().default(true),
   newMessages: boolean("new_messages").notNull().default(true),
   newLikes: boolean("new_likes").notNull().default(true),

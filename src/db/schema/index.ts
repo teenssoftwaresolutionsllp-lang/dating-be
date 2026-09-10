@@ -1,4 +1,5 @@
 export * from "./users.schema";
+export * from "./otp-verifications.schema";
 export * from "./sessions.schema";
 export * from "./profiles.schema";
 export * from "./languages.schema";

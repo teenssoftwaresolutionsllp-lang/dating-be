@@ -16,7 +16,7 @@ export const profilePhotos = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.user_id, { onDelete: "cascade" }),
     storageKey: text("storage_key").notNull(),
     url: text("url").notNull(),
     displayOrder: smallint("display_order").notNull().default(0),

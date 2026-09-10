@@ -14,6 +14,7 @@
     "test:db": "tsx src/test-db.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
+    "db:seed": "tsx src/db/seeds/index.ts",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio"
   },
@@ -31,14 +32,19 @@
   "homepage": "https://github.com/teenssoftwaresolutionsllp-lang/dating-be#readme",
   "dependencies": {
     "bcryptjs": "^3.0.3",
+    "cloudinary": "^2.11.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
+    "firebase-admin": "^14.3.0",
     "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.12.0",
-    "pg": "^8.23.0"
+    "multer": "^2.3.0",
+    "pg": "^8.23.0",
+    "uuid": "^14.0.2",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
@@ -46,6 +52,7 @@
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/morgan": "^1.9.10",
+    "@types/multer": "^2.2.0",
     "@types/node": "^26.4.1",
     "@types/pg": "^8.23.1",
     "drizzle-kit": "^0.31.10",

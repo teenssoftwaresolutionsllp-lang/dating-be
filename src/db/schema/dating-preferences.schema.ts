@@ -13,7 +13,7 @@ export const datingPreferences = pgTable("dating_preferences", {
   userId: uuid("user_id")
     .notNull()
     .unique()
-    .references(() => users.id, { onDelete: "cascade" }),
+    .references(() => users.user_id, { onDelete: "cascade" }),
   minAge: smallint("min_age").notNull().default(18),
   maxAge: smallint("max_age").notNull().default(60),
   maxDistance: integer("max_distance").notNull().default(50),

@@ -39,12 +39,14 @@ export const sendSmsOTP = async ({
   otp,
 }: SendSmsOtpOptions): Promise<SendSmsOtpResult> => {
   const fullPhone = `${countryCode}${phone}`;
-  console.log(`\n==============================================`);
-  console.log(`📲 [SMS GATEWAY SIMULATION]`);
-  console.log(`To: ${fullPhone}`);
-  console.log(`Your Dating App verification code is: [ ${otp} ]`);
-  console.log(`Valid for ${OTP_CONFIG.EXPIRY_MINUTES} minutes.`);
-  console.log(`==============================================\n`);
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`\n==============================================`);
+    console.log(`📲 [SMS GATEWAY SIMULATION]`);
+    console.log(`To: ${fullPhone}`);
+    console.log(`Your Dating App verification code is: [ ${otp} ]`);
+    console.log(`Valid for ${OTP_CONFIG.EXPIRY_MINUTES} minutes.`);
+    console.log(`==============================================\n`);
+  }
 
   // SMS Gateway integration hook (Twilio / AWS SNS / MSG91 / Fast2SMS) can be plugged here
   return {

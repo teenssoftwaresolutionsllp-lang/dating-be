@@ -14,10 +14,10 @@ export const profiles = pgTable("profiles", {
   userId: uuid("user_id")
     .notNull()
     .unique()
-    .references(() => users.id, { onDelete: "cascade" }),
-  name: varchar("name", { length: 100 }).notNull(),
-  dateOfBirth: date("date_of_birth").notNull(),
-  gender: varchar("gender", { length: 20 }).notNull(),
+    .references(() => users.user_id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 100 }),
+  dateOfBirth: date("date_of_birth"),
+  gender: varchar("gender", { length: 20 }),
   height: smallint("height"),
   location: varchar("location", { length: 150 }),
   relationshipStatus: varchar("relationship_status", { length: 30 }),

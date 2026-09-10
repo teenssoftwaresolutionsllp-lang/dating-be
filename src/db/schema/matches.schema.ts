@@ -7,10 +7,10 @@ export const matches = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     user1Id: uuid("user1_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.user_id, { onDelete: "cascade" }),
     user2Id: uuid("user2_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.user_id, { onDelete: "cascade" }),
     matchedAt: timestamp("matched_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

@@ -1,6 +1,9 @@
 import { generateOTP, normalizePhone } from "./utils/otp";
-import { generateTokens, verifyAccessToken, verifyRefreshToken } from "./utils/jwt";
-import { hashPassword, comparePassword } from "./utils/password";
+import {
+  generateTokens,
+  verifyAccessToken,
+  verifyRefreshToken,
+} from "./utils/jwt";
 import { SUPPORTED_LANGUAGES } from "./config/constants";
 import type { SafeUser } from "./types/index";
 
@@ -18,25 +21,16 @@ const runUnitTests = async (): Promise<void> => {
   const otp1 = generateOTP(4);
   const otp2 = generateOTP(4);
   console.log(`   Generated OTPs: [${otp1}], [${otp2}]`);
-  if (otp1.length !== 4 || otp2.length !== 4) throw new Error("OTP length must be 4");
+  if (otp1.length !== 4 || otp2.length !== 4)
+    throw new Error("OTP length must be 4");
 
-  // 3. Password hashing & comparison
-  console.log("\n3. Testing Password Hash & Compare:");
-  const plainPass = "DatingAppSecure@2025";
-  const hash = await hashPassword(plainPass);
-  const isValid = await comparePassword(plainPass, hash);
-  const isInvalid = await comparePassword("WrongPassword", hash);
-  console.log("   Password match test:", isValid === true ? "PASS" : "FAIL");
-  console.log("   Wrong password rejection:", isInvalid === false ? "PASS" : "FAIL");
-  if (!isValid || isInvalid) throw new Error("Password hashing test failed");
-
-  // 4. JWT Token Generation and Verification
-  console.log("\n4. Testing JWT Tokens (Access & Refresh):");
+  // 3. JWT Token Generation and Verification
+  console.log("\n3. Testing JWT Tokens (Access & Refresh):");
   const mockUser: SafeUser = {
-    id: 42,
+    id: "42",
+    userId: "42",
     phone: "9876543210",
     countryCode: "+91",
-    email: "test@datingapp.com",
     role: "user",
     preferredLanguage: "te",
     isVerified: true,
@@ -47,14 +41,21 @@ const runUnitTests = async (): Promise<void> => {
   console.log("   Refresh Token generated (len):", tokens.refreshToken.length);
 
   const decodedAccess = verifyAccessToken(tokens.accessToken);
-  console.log("   Decoded Access Token:", { id: decodedAccess.id, phone: decodedAccess.phone, role: decodedAccess.role });
-  if (decodedAccess.id !== 42 || decodedAccess.phone !== "9876543210") {
+  console.log("   Decoded Access Token:", {
+    id: decodedAccess.id,
+    phone: decodedAccess.phone,
+    role: decodedAccess.role,
+  });
+  if (decodedAccess.id !== "42" || decodedAccess.phone !== "9876543210") {
     throw new Error("JWT Access Token decode mismatch");
   }
 
   const decodedRefresh = verifyRefreshToken(tokens.refreshToken);
-  console.log("   Decoded Refresh Token:", { id: decodedRefresh.id, type: decodedRefresh.type });
-  if (decodedRefresh.id !== 42 || decodedRefresh.type !== "refresh") {
+  console.log("   Decoded Refresh Token:", {
+    id: decodedRefresh.id,
+    type: decodedRefresh.type,
+  });
+  if (decodedRefresh.id !== "42" || decodedRefresh.type !== "refresh") {
     throw new Error("JWT Refresh Token decode mismatch");
   }
 
@@ -65,7 +66,8 @@ const runUnitTests = async (): Promise<void> => {
   const english = SUPPORTED_LANGUAGES.find((l) => l.code === "en");
   console.log("   English:", english);
   console.log("   Telugu:", telugu);
-  if (!telugu || !english) throw new Error("Missing Telugu or English in supported languages");
+  if (!telugu || !english)
+    throw new Error("Missing Telugu or English in supported languages");
 
   console.log("\n=======================================================");
   console.log("🎉 ALL AUTHENTICATION LOGIC & UNIT TESTS PASSED 100%!");

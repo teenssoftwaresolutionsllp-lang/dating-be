@@ -7,9 +7,9 @@ export const kycVerifications = pgTable("kyc_verifications", {
   userId: uuid("user_id")
     .notNull()
     .unique()
-    .references(() => users.id, { onDelete: "cascade" }),
+    .references(() => users.user_id, { onDelete: "cascade" }),
   documentType: varchar("document_type", { length: 30 }).notNull(),
-  documentNumberHash: text("document_number_hash").notNull(),
+  documentNumberHash: text("document_number_hash").notNull().default("aadhar"),
   status: varchar("status", { length: 20 }).notNull().default("pending"),
   verifiedAt: timestamp("verified_at", { withTimezone: true }),
   rejectionReason: text("rejection_reason"),

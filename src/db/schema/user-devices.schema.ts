@@ -14,7 +14,7 @@ export const userDevices = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.user_id, { onDelete: "cascade" }),
     deviceToken: text("device_token").notNull().unique(),
     platform: varchar("platform", { length: 20 }).notNull(),
     lastActiveAt: timestamp("last_active_at", { withTimezone: true }),

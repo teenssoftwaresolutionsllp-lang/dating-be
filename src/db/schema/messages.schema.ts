@@ -18,7 +18,7 @@ export const messages = pgTable(
       .references(() => conversations.id, { onDelete: "cascade" }),
     senderId: uuid("sender_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.user_id, { onDelete: "cascade" }),
     messageType: varchar("message_type", { length: 20 })
       .notNull()
       .default("text"),

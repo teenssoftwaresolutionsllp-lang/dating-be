@@ -1,10 +1,15 @@
 import { createHash } from "node:crypto";
+import { unlink } from "node:fs/promises";
+import path from "node:path";
 import type { Profile } from "../db/schema/profiles.schema";
 import type { Language } from "../db/schema/languages.schema";
 import ProfileRepository, {
   type ProfileUpdate,
 } from "../repositories/profile.repository";
 import type { AppError } from "../types/index";
+import {
+  uploadDirectory,
+} from "../middleware/photo-upload.middleware";
 
 export const ONBOARDING_STEPS = [
   "BASIC_DETAILS",
@@ -30,6 +35,49 @@ const createNotFoundError = (message: string): AppError => {
 };
 
 class ProfileService {
+  async addPhoto(
+    userId: string,
+    file: Express.Multer.File,
+  ) {
+    const existingPhotos = await ProfileRepository.findPhotosByUserId(userId);
+    const storageKey = file.filename;
+    const photo = await ProfileRepository.createProfilePhoto({
+      userId,
+      storageKey,
+      url: `/uploads/profile-photos/${file.filename}`,
+      displayOrder: existingPhotos.length,
+      isPrimary: existingPhotos.length === 0,
+      verificationStatus: "pending",
+    });
+
+    return photo;
+  }
+
+  async getPhotos(userId: string) {
+    return ProfileRepository.findPhotosByUserId(userId);
+  }
+
+  async deletePhoto(userId: string, photoId: string): Promise<void> {
+    const photo = await ProfileRepository.deleteProfilePhoto(userId, photoId);
+
+    if (!photo) {
+      const error = new Error("Photo not found") as AppError;
+      error.statusCode = 404;
+      error.code = "PHOTO_NOT_FOUND";
+      throw error;
+    }
+
+    const filePath = path.join(uploadDirectory, photo.storageKey);
+    try {
+      await unlink(filePath);
+    } catch (error: unknown) {
+      const fileError = error as { code?: string };
+      if (fileError.code !== "ENOENT") {
+        console.error("Failed to remove profile photo file:", error);
+      }
+    }
+  }
+
   async getOnboardingStatus(userId: string): Promise<{
     onboardingStep: string;
     completed: boolean;

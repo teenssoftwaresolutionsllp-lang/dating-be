@@ -2,6 +2,7 @@ import { Router } from "express";
 import ProfileController from "../controllers/profile.controller";
 import { authenticate } from "../middleware/auth.middleware";
 import { asyncHandler } from "../middleware/error.middleware";
+import { uploadProfilePhoto } from "../middleware/photo-upload.middleware";
 import { validateBody } from "../middleware/validation.middleware";
 import { profileUpdateSchema } from "../validation/profile.validation";
 import {
@@ -34,6 +35,28 @@ router.patch(
   authenticate,
   validateBody(profileUpdateSchema),
   asyncHandler(ProfileController.updateProfile),
+);
+
+// Store a profile image on local disk and save its metadata in PostgreSQL.
+router.post(
+  "/profile/photos",
+  authenticate,
+  uploadProfilePhoto.single("photo"),
+  asyncHandler(ProfileController.uploadPhoto),
+);
+
+// Return the authenticated user's uploaded photo metadata and URLs.
+router.get(
+  "/profile/photos",
+  authenticate,
+  asyncHandler(ProfileController.getPhotos),
+);
+
+// Delete a photo only when it belongs to the authenticated user.
+router.delete(
+  "/profile/photos/:photoId",
+  authenticate,
+  asyncHandler(ProfileController.deletePhoto),
 );
 
 // Return predefined reference data for onboarding selection controls.

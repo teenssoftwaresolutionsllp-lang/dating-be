@@ -1,4 +1,4 @@
-import { count, eq, inArray } from "drizzle-orm";
+import { and, count, eq, inArray } from "drizzle-orm";
 import { db } from "../db/index";
 import {
   education,
@@ -17,6 +17,7 @@ import {
 import { interests } from "../db/schema/interests.schema";
 import { profileInterests } from "../db/schema/profile-interests.schema";
 import { profilePhotos } from "../db/schema/profile-photos.schema";
+import type { NewProfilePhoto, ProfilePhoto } from "../db/schema/profile-photos.schema";
 import { languages } from "../db/schema/languages.schema";
 import { profileLanguages } from "../db/schema/profile-languages.schema";
 import {
@@ -40,6 +41,48 @@ export type ProfileUpdate = Partial<
 >;
 
 class ProfileRepository {
+  async findPhotosByUserId(userId: string): Promise<ProfilePhoto[]> {
+    return db
+      .select()
+      .from(profilePhotos)
+      .where(eq(profilePhotos.userId, userId));
+  }
+
+  async createProfilePhoto(
+    values: NewProfilePhoto,
+  ): Promise<ProfilePhoto> {
+    return db.transaction(async (transaction) => {
+      const [photo] = await transaction
+        .insert(profilePhotos)
+        .values(values)
+        .returning();
+
+      await transaction
+        .update(users)
+        .set({ onboardingStep: "INTERESTS", updatedAt: new Date() })
+        .where(eq(users.user_id, values.userId));
+
+      return photo;
+    });
+  }
+
+  async deleteProfilePhoto(
+    userId: string,
+    photoId: string,
+  ): Promise<ProfilePhoto | undefined> {
+    const [photo] = await db
+      .delete(profilePhotos)
+      .where(
+        and(
+          eq(profilePhotos.id, photoId),
+          eq(profilePhotos.userId, userId),
+        ),
+      )
+      .returning();
+
+    return photo;
+  }
+
   async getCompletionData(userId: string) {
     return db.transaction(async (transaction) => {
       const [profile] = await transaction

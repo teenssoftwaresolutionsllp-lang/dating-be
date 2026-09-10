@@ -31,8 +31,7 @@ The API currently supports:
 
 The following features are not implemented yet:
 
-- profile photo upload
-- object storage integration
+- local profile photo upload
 - admin verification workflow
 - KYC approval workflow
 - complete integration test suite
@@ -155,12 +154,14 @@ Use this order to test the complete currently implemented flow:
 10. Save education
 11. Submit KYC
 12. Get KYC status
-13. Save selected interests
-14. Save dating preferences
-15. Try onboarding completion
-16. Test logout or logout-all
+13. Upload profile photo
+14. Get profile photos
+15. Save selected interests
+16. Save dating preferences
+17. Try onboarding completion
+18. Test logout or logout-all
 
-The completion request will normally report `PHOTOS` as missing because photo upload is not implemented yet.
+The completion request will report `PHOTOS` as missing until at least one local photo is uploaded.
 
 ## 7. Health and Root Routes
 
@@ -679,7 +680,113 @@ Expected response:
 }
 ```
 
-### 9.4 List languages
+### 9.4 Upload a profile photo
+
+```http
+POST {{baseUrl}}/api/v1/profile/photos
+```
+
+Purpose:
+
+- accepts one profile image as `multipart/form-data`
+- stores the image in the local `uploads/profile-photos` directory
+- stores only photo metadata and the local URL in `profile_photos`
+- marks the first uploaded photo as the primary photo
+- advances onboarding progress to `PHOTOS`
+
+Postman setup:
+
+1. Select the **Body** tab.
+2. Select **form-data**.
+3. Add a field named `photo`.
+4. Change its type from **Text** to **File**.
+5. Select a JPEG, PNG, or WebP file up to 5 MB.
+6. Add `Authorization: Bearer {{accessToken}}` under the **Headers** tab.
+
+Expected response:
+
+```json
+{
+  "success": true,
+  "statusCode": 201,
+  "message": "Profile photo uploaded successfully",
+  "data": {
+    "photo": {
+      "id": "photo-uuid",
+      "userId": "user-uuid",
+      "storageKey": "generated-file-name.jpg",
+      "url": "/uploads/profile-photos/generated-file-name.jpg",
+      "displayOrder": 0,
+      "isPrimary": true,
+      "verificationStatus": "pending"
+    }
+  }
+}
+```
+
+The image can be opened using:
+
+```text
+{{baseUrl}}/uploads/profile-photos/generated-file-name.jpg
+```
+
+### 9.5 Get profile photos
+
+```http
+GET {{baseUrl}}/api/v1/profile/photos
+```
+
+Purpose:
+
+- returns the authenticated user's uploaded photo metadata
+- allows the frontend to display photos after reopening the app or pressing Back
+
+Headers:
+
+```http
+Authorization: Bearer {{accessToken}}
+```
+
+Expected response:
+
+```json
+{
+  "success": true,
+  "statusCode": 200,
+  "message": "Profile photos retrieved successfully",
+  "data": {
+    "photos": []
+  }
+}
+```
+
+### 9.6 Delete a profile photo
+
+```http
+DELETE {{baseUrl}}/api/v1/profile/photos/:photoId
+```
+
+Purpose:
+
+- deletes the selected photo metadata
+- removes the corresponding local file
+- checks that the photo belongs to the authenticated user before deleting
+
+Example:
+
+```http
+DELETE {{baseUrl}}/api/v1/profile/photos/PHOTO_UUID
+```
+
+Headers:
+
+```http
+Authorization: Bearer {{accessToken}}
+```
+
+If the photo belongs to another user or does not exist, the API returns `PHOTO_NOT_FOUND`.
+
+### 9.7 List languages
 
 ```http
 GET {{baseUrl}}/api/v1/languages
@@ -709,7 +816,7 @@ Expected response:
 }
 ```
 
-### 9.5 Save profile languages
+### 9.8 Save profile languages
 
 ```http
 PUT {{baseUrl}}/api/v1/profile/languages
@@ -751,7 +858,7 @@ Expected response:
 }
 ```
 
-### 9.6 Save education
+### 9.9 Save education
 
 ```http
 PUT {{baseUrl}}/api/v1/profile/education
@@ -790,7 +897,7 @@ Expected response:
 }
 ```
 
-### 9.7 Submit KYC
+### 9.10 Submit KYC
 
 ```http
 POST {{baseUrl}}/api/v1/kyc
@@ -828,7 +935,7 @@ Expected response:
 
 The raw document number and stored hash are never returned.
 
-### 9.8 Get KYC status
+### 9.11 Get KYC status
 
 ```http
 GET {{baseUrl}}/api/v1/kyc
@@ -860,7 +967,7 @@ verified
 rejected
 ```
 
-### 9.9 List interests
+### 9.12 List interests
 
 ```http
 GET {{baseUrl}}/api/v1/interests
@@ -891,7 +998,7 @@ Expected response:
 }
 ```
 
-### 9.10 Save profile interests
+### 9.13 Save profile interests
 
 ```http
 PUT {{baseUrl}}/api/v1/profile/interests
@@ -926,7 +1033,7 @@ Expected response:
 }
 ```
 
-### 9.11 Save dating preferences
+### 9.14 Save dating preferences
 
 ```http
 PATCH {{baseUrl}}/api/v1/dating-preferences
@@ -973,7 +1080,7 @@ Expected response:
 }
 ```
 
-### 9.12 Complete onboarding
+### 9.15 Complete onboarding
 
 ```http
 POST {{baseUrl}}/api/v1/onboarding/complete
@@ -1035,7 +1142,7 @@ Current completion requirements:
 - at least one interest
 - dating preferences
 
-The current project does not yet provide photo upload, so this endpoint normally reports `PHOTOS` as missing.
+This endpoint reports `PHOTOS` as missing until at least one profile photo is uploaded.
 
 ## 10. Postman Environment Setup
 
@@ -1195,7 +1302,7 @@ users.onboarding_completed_at
 | `profile_languages`  | User-language relationships                |
 | `education`          | One education record per user              |
 | `kyc_verifications`  | Hashed KYC submission and status           |
-| `profile_photos`     | Photo metadata, upload not implemented yet |
+| `profile_photos`     | Local profile photo metadata              |
 | `interests`          | Predefined interest master data            |
 | `profile_interests`  | User-interest relationships                |
 | `dating_preferences` | One preference record per user             |
@@ -1204,7 +1311,7 @@ users.onboarding_completed_at
 
 1. The refresh endpoint currently reads the refresh token from an HTTP-only cookie. React Native body-token refresh support is not implemented yet.
 2. Languages and interests require master data to be inserted before selection requests can succeed.
-3. Photo routes are not implemented because no object-storage provider is configured.
+3. Profile photos currently use local disk storage and should move to object storage for production deployment.
 4. KYC submission creates a `pending` record, but no admin verification workflow exists yet to change it to `verified`.
 5. Location search and predefined location IDs are intentionally deferred; onboarding currently stores the selected location as text in `profiles.location`.
 6. The current documentation reflects the implemented API and should be updated whenever a new route is added.

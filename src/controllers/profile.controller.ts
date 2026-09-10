@@ -68,6 +68,82 @@ export class ProfileController {
     });
   }
 
+  static async uploadPhoto(req: Request, res: Response): Promise<Response> {
+    const userId = getUserId(req);
+
+    if (!userId) {
+      return ApiResponse.error(res, {
+        statusCode: 401,
+        message: "Unauthorized: User not authenticated",
+        code: "UNAUTHORIZED",
+      });
+    }
+
+    if (!req.file) {
+      return ApiResponse.error(res, {
+        statusCode: 400,
+        message: "Profile photo is required",
+        code: "PHOTO_REQUIRED",
+      });
+    }
+
+    const photo = await ProfileService.addPhoto(userId, req.file);
+
+    return ApiResponse.success(res, {
+      statusCode: 201,
+      message: "Profile photo uploaded successfully",
+      data: { photo },
+    });
+  }
+
+  static async getPhotos(req: Request, res: Response): Promise<Response> {
+    const userId = getUserId(req);
+
+    if (!userId) {
+      return ApiResponse.error(res, {
+        statusCode: 401,
+        message: "Unauthorized: User not authenticated",
+        code: "UNAUTHORIZED",
+      });
+    }
+
+    const photos = await ProfileService.getPhotos(userId);
+
+    return ApiResponse.success(res, {
+      statusCode: 200,
+      message: "Profile photos retrieved successfully",
+      data: { photos },
+    });
+  }
+
+  static async deletePhoto(req: Request, res: Response): Promise<Response> {
+    const userId = getUserId(req);
+    const photoId = req.params.photoId;
+
+    if (!userId) {
+      return ApiResponse.error(res, {
+        statusCode: 401,
+        message: "Unauthorized: User not authenticated",
+        code: "UNAUTHORIZED",
+      });
+    }
+
+    if (typeof photoId !== "string") {
+      return ApiResponse.error(res, {
+        statusCode: 400,
+        message: "Photo ID is required",
+        code: "PHOTO_ID_REQUIRED",
+      });
+    }
+
+    await ProfileService.deletePhoto(userId, photoId);
+
+    return ApiResponse.success(res, {
+      statusCode: 200,
+      message: "Profile photo deleted successfully",
+    });
+  }
+
   static async getLanguages(_req: Request, res: Response): Promise<Response> {
     const languages = await ProfileService.getLanguages();
 

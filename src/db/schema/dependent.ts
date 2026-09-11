@@ -53,7 +53,7 @@ export const education = pgTable(
   (table) => [
     index("education_user_id_idx").on(table.userId),
     index("education_user_primary_idx").on(table.userId, table.isPrimary),
-  ]
+  ],
 );
 
 export type Education = typeof education.$inferSelect;
@@ -73,6 +73,8 @@ export const kycVerifications = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     documentType: varchar("document_type", { length: 30 }).notNull(), // passport, national_id, driving_license, aadhaar
     documentNumberHash: text("document_number_hash").notNull(),
+    documentImageStorageKey: text("document_image_storage_key"),
+    documentImageUrl: text("document_image_url"),
     status: varchar("status", { length: 20 }).default("pending").notNull(), // pending, verified, rejected
     provider: varchar("provider", { length: 50 }),
     providerReference: varchar("provider_reference", { length: 150 }),
@@ -97,7 +99,7 @@ export const kycVerifications = pgTable(
       .on(table.providerReference)
       .where(sql`${table.providerReference} IS NOT NULL`),
     index("kyc_status_idx").on(table.status),
-  ]
+  ],
 );
 
 export type KycVerification = typeof kycVerifications.$inferSelect;
@@ -143,7 +145,7 @@ export const profilePhotos = pgTable(
     index("profile_photos_user_order_idx").on(table.userId, table.displayOrder),
     index("profile_photos_user_primary_idx").on(table.userId, table.isPrimary),
     index("profile_photos_moderation_status_idx").on(table.moderationStatus),
-  ]
+  ],
 );
 
 export type ProfilePhoto = typeof profilePhotos.$inferSelect;
@@ -177,7 +179,7 @@ export const mediaAssets = pgTable(
     index("media_assets_user_id_idx").on(table.userId),
     index("media_assets_type_idx").on(table.mediaType),
     index("media_assets_status_idx").on(table.status),
-  ]
+  ],
 );
 
 export type MediaAsset = typeof mediaAssets.$inferSelect;
@@ -199,6 +201,7 @@ export const datingPreferences = pgTable(
     maxAge: smallint("max_age").default(60).notNull(),
     maxDistanceKm: integer("max_distance_km").default(50).notNull(),
     preferredGenders: jsonb("preferred_genders").$type<string[]>(), // e.g. ["female", "non_binary"]
+    preferredInterestIds: jsonb("preferred_interest_ids").$type<number[]>(),
     relationshipIntentions: jsonb("relationship_intentions").$type<string[]>(), // e.g. ["long_term", "marriage"]
     religionPreferences: jsonb("religion_preferences").$type<string[]>(),
     communityPreferences: jsonb("community_preferences").$type<string[]>(),
@@ -215,7 +218,7 @@ export const datingPreferences = pgTable(
     check("dating_pref_min_age_check", sql`${table.minAge} >= 18`),
     check("dating_pref_max_age_check", sql`${table.maxAge} >= ${table.minAge}`),
     check("dating_pref_distance_check", sql`${table.maxDistanceKm} > 0`),
-  ]
+  ],
 );
 
 export type DatingPreference = typeof datingPreferences.$inferSelect;
@@ -247,15 +250,15 @@ export const swipes = pgTable(
   (table) => [
     uniqueIndex("swipes_user_target_unique_idx").on(
       table.userId,
-      table.targetUserId
+      table.targetUserId,
     ),
     index("swipes_target_action_idx").on(table.targetUserId, table.action),
     index("swipes_created_at_idx").on(table.createdAt),
     check(
       "swipes_prevent_self_swipe_check",
-      sql`${table.userId} <> ${table.targetUserId}`
+      sql`${table.userId} <> ${table.targetUserId}`,
     ),
-  ]
+  ],
 );
 
 export type Swipe = typeof swipes.$inferSelect;
@@ -285,7 +288,7 @@ export const swipeEvents = pgTable(
     index("swipe_events_user_id_idx").on(table.userId),
     index("swipe_events_target_user_id_idx").on(table.targetUserId),
     index("swipe_events_created_at_idx").on(table.createdAt),
-  ]
+  ],
 );
 
 export type SwipeEvent = typeof swipeEvents.$inferSelect;
@@ -321,7 +324,7 @@ export const matches = pgTable(
   (table) => [
     uniqueIndex("matches_canonical_pair_unique_idx").on(
       table.user1Id,
-      table.user2Id
+      table.user2Id,
     ),
     index("matches_user1_idx").on(table.user1Id),
     index("matches_user2_idx").on(table.user2Id),
@@ -329,9 +332,9 @@ export const matches = pgTable(
     index("matches_last_activity_idx").on(table.lastActivityAt),
     check(
       "matches_canonical_order_check",
-      sql`${table.user1Id} < ${table.user2Id}`
+      sql`${table.user1Id} < ${table.user2Id}`,
     ),
-  ]
+  ],
 );
 
 export type Match = typeof matches.$inferSelect;
@@ -359,7 +362,7 @@ export const conversations = pgTable(
   (table) => [
     uniqueIndex("conversations_match_id_unique_idx").on(table.matchId),
     index("conversations_updated_at_idx").on(table.updatedAt),
-  ]
+  ],
 );
 
 export type Conversation = typeof conversations.$inferSelect;
@@ -399,12 +402,12 @@ export const messages = pgTable(
       .where(sql`${table.clientMessageId} IS NOT NULL`),
     index("messages_conversation_created_idx").on(
       table.conversationId,
-      table.createdAt
+      table.createdAt,
     ),
     index("messages_sender_id_idx").on(table.senderId),
     index("messages_reply_to_idx").on(table.replyToMessageId),
     index("messages_deleted_at_idx").on(table.deletedAt),
-  ]
+  ],
 );
 
 export type Message = typeof messages.$inferSelect;
@@ -431,15 +434,15 @@ export const blocks = pgTable(
   (table) => [
     uniqueIndex("blocks_user_blocked_unique_idx").on(
       table.userId,
-      table.blockedUserId
+      table.blockedUserId,
     ),
     index("blocks_user_id_idx").on(table.userId),
     index("blocks_blocked_user_id_idx").on(table.blockedUserId),
     check(
       "blocks_prevent_self_block_check",
-      sql`${table.userId} <> ${table.blockedUserId}`
+      sql`${table.userId} <> ${table.blockedUserId}`,
     ),
-  ]
+  ],
 );
 
 export type Block = typeof blocks.$inferSelect;
@@ -474,9 +477,9 @@ export const reports = pgTable(
     index("reports_created_at_idx").on(table.createdAt),
     check(
       "reports_prevent_self_report_check",
-      sql`${table.reporterId} <> ${table.reportedUserId}`
+      sql`${table.reporterId} <> ${table.reportedUserId}`,
     ),
-  ]
+  ],
 );
 
 export type Report = typeof reports.$inferSelect;
@@ -506,7 +509,7 @@ export const reportActions = pgTable(
     index("report_actions_report_id_idx").on(table.reportId),
     index("report_actions_moderator_id_idx").on(table.moderatorId),
     index("report_actions_created_at_idx").on(table.createdAt),
-  ]
+  ],
 );
 
 export type ReportAction = typeof reportActions.$inferSelect;
@@ -539,7 +542,7 @@ export const userSuspensions = pgTable(
   (table) => [
     index("user_suspensions_user_id_idx").on(table.userId),
     index("user_suspensions_duration_idx").on(table.startsAt, table.endsAt),
-  ]
+  ],
 );
 
 export type UserSuspension = typeof userSuspensions.$inferSelect;
@@ -570,7 +573,7 @@ export const adminAuditLogs = pgTable(
     index("admin_logs_admin_id_idx").on(table.adminId),
     index("admin_logs_entity_idx").on(table.entityType, table.entityId),
     index("admin_logs_created_at_idx").on(table.createdAt),
-  ]
+  ],
 );
 
 export type AdminAuditLog = typeof adminAuditLogs.$inferSelect;
@@ -599,7 +602,7 @@ export const notifications = pgTable(
   (table) => [
     index("notifications_user_created_idx").on(table.userId, table.createdAt),
     index("notifications_user_read_idx").on(table.userId, table.readAt),
-  ]
+  ],
 );
 
 export type Notification = typeof notifications.$inferSelect;
@@ -632,7 +635,7 @@ export const pushNotificationDeliveries = pgTable(
     index("push_delivery_notif_idx").on(table.notificationId),
     index("push_delivery_device_idx").on(table.deviceId),
     index("push_delivery_status_idx").on(table.status),
-  ]
+  ],
 );
 
 export type PushNotificationDelivery =

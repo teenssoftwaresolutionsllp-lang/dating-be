@@ -25,17 +25,20 @@ npm install -D typescript tsx @types/node @types/express @types/cors @types/json
 ## 🚀 Running the Project
 
 ### Development Server (with hot reload)
+
 ```bash
 npm run dev
 ```
 
 ### Type Checking & Build
+
 ```bash
 npm run typecheck
 npm run build
 ```
 
 ### Run Tests
+
 ```bash
 npm test            # Logic & unit tests
 npm run test:api    # API validation tests
@@ -355,10 +358,10 @@ Seed development/master data:
 npm run db:seed
 ```
 
-If using the seed file directly:
+The seed entry point is:
 
 ```bash
-node src/db/seed.js
+tsx src/db/seed.ts
 ```
 
 ---
@@ -377,7 +380,7 @@ Add these scripts to `package.json`:
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "db:seed": "node src/db/seed.js"
+    "db:seed": "tsx src/db/seed.ts"
   }
 }
 ```

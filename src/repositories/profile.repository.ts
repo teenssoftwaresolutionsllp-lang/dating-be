@@ -1,34 +1,27 @@
 import { and, count, eq, inArray } from "drizzle-orm";
 import { db } from "../db/index";
 import {
-  education,
-  type Education,
-  type NewEducation,
-} from "../db/schema/education.schema";
-import {
-  kycVerifications,
-  type KycVerification,
-} from "../db/schema/kyc.schema";
-import {
   datingPreferences,
-  type DatingPreference,
-  type NewDatingPreference,
-} from "../db/schema/dating-preferences.schema";
-import { interests } from "../db/schema/interests.schema";
-import { profileInterests } from "../db/schema/profile-interests.schema";
-import { profilePhotos } from "../db/schema/profile-photos.schema";
-import type {
-  NewProfilePhoto,
-  ProfilePhoto,
-} from "../db/schema/profile-photos.schema";
-import { languages } from "../db/schema/languages.schema";
-import { profileLanguages } from "../db/schema/profile-languages.schema";
-import {
+  education,
+  interests,
+  kycVerifications,
+  languages,
+  profileInterests,
+  profileLanguages,
+  profilePhotos,
   profiles,
+  users,
+  type DatingPreference,
+  type Education,
+  type KycVerification,
+  type Language,
+  type NewDatingPreference,
+  type NewEducation,
   type NewProfile,
+  type NewProfilePhoto,
   type Profile,
-} from "../db/schema/profiles.schema";
-import { users } from "../db/schema/users.schema";
+  type ProfilePhoto,
+} from "../db/schema";
 
 export type ProfileUpdate = Partial<
   Pick<
@@ -36,8 +29,14 @@ export type ProfileUpdate = Partial<
     | "name"
     | "dateOfBirth"
     | "gender"
-    | "height"
-    | "location"
+    | "religion"
+    | "heightCm"
+    | "city"
+    | "state"
+    | "country"
+    | "latitude"
+    | "longitude"
+    | "locationUpdatedAt"
     | "relationshipStatus"
     | "bio"
   >
@@ -74,8 +73,8 @@ class ProfileRepository {
 
       await transaction
         .update(users)
-        .set({ onboardingStep: "INTERESTS", updatedAt: new Date() })
-        .where(eq(users.user_id, values.userId));
+        .set({ updatedAt: new Date() })
+        .where(eq(users.id, values.userId));
 
       return photo;
     });
@@ -150,11 +149,9 @@ class ProfileRepository {
     await db
       .update(users)
       .set({
-        onboardingStep: "COMPLETED",
-        onboardingCompletedAt: new Date(),
         updatedAt: new Date(),
       })
-      .where(eq(users.user_id, userId));
+      .where(eq(users.id, userId));
   }
 
   async findInterests(): Promise<(typeof interests.$inferSelect)[]> {
@@ -198,8 +195,8 @@ class ProfileRepository {
 
       await transaction
         .update(users)
-        .set({ onboardingStep: "PREFERENCES", updatedAt: new Date() })
-        .where(eq(users.user_id, userId));
+        .set({ updatedAt: new Date() })
+        .where(eq(users.id, userId));
 
       return existingIds;
     });
@@ -221,8 +218,8 @@ class ProfileRepository {
 
       await transaction
         .update(users)
-        .set({ onboardingStep: "PREFERENCES", updatedAt: new Date() })
-        .where(eq(users.user_id, userId));
+        .set({ updatedAt: new Date() })
+        .where(eq(users.id, userId));
 
       return preferences;
     });
@@ -241,19 +238,38 @@ class ProfileRepository {
     userId: string,
     documentType: string,
     documentNumberHash: string,
+    documentImage?: {
+      storageKey: string;
+      url: string;
+    },
   ): Promise<KycVerification> {
     return db.transaction(async (transaction) => {
       const now = new Date();
       const [kyc] = await transaction
         .insert(kycVerifications)
-        .values({ userId, documentType, documentNumberHash, updatedAt: now })
+        .values({
+          userId,
+          documentType,
+          documentNumberHash,
+          documentImageStorageKey: documentImage?.storageKey,
+          documentImageUrl: documentImage?.url,
+          status: "verified",
+          verifiedAt: now,
+          updatedAt: now,
+        })
         .onConflictDoUpdate({
           target: kycVerifications.userId,
           set: {
             documentType,
             documentNumberHash,
-            status: "pending",
-            verifiedAt: null,
+            ...(documentImage
+              ? {
+                  documentImageStorageKey: documentImage.storageKey,
+                  documentImageUrl: documentImage.url,
+                }
+              : {}),
+            status: "verified",
+            verifiedAt: now,
             rejectionReason: null,
             updatedAt: now,
           },
@@ -262,8 +278,8 @@ class ProfileRepository {
 
       await transaction
         .update(users)
-        .set({ onboardingStep: "PHOTOS", updatedAt: now })
-        .where(eq(users.user_id, userId));
+        .set({ updatedAt: now })
+        .where(eq(users.id, userId));
 
       return kyc;
     });
@@ -310,8 +326,8 @@ class ProfileRepository {
 
       await transaction
         .update(users)
-        .set({ onboardingStep: "EDUCATION", updatedAt: new Date() })
-        .where(eq(users.user_id, userId));
+        .set({ updatedAt: new Date() })
+        .where(eq(users.id, userId));
 
       return existingIds;
     });
@@ -323,19 +339,30 @@ class ProfileRepository {
   ): Promise<Education> {
     return db.transaction(async (transaction) => {
       const now = new Date();
-      const [educationRecord] = await transaction
-        .insert(education)
-        .values({ userId, ...values, updatedAt: now })
-        .onConflictDoUpdate({
-          target: education.userId,
-          set: { ...values, updatedAt: now },
-        })
-        .returning();
+      const [existingEducation] = await transaction
+        .select({ id: education.id })
+        .from(education)
+        .where(eq(education.userId, userId))
+        .limit(1);
+
+      let educationRecord: Education | undefined;
+      if (existingEducation) {
+        [educationRecord] = await transaction
+          .update(education)
+          .set({ ...values, updatedAt: now })
+          .where(eq(education.id, existingEducation.id))
+          .returning();
+      } else {
+        [educationRecord] = await transaction
+          .insert(education)
+          .values({ userId, ...values, updatedAt: now })
+          .returning();
+      }
 
       await transaction
         .update(users)
-        .set({ onboardingStep: "KYC", updatedAt: now })
-        .where(eq(users.user_id, userId));
+        .set({ updatedAt: now })
+        .where(eq(users.id, userId));
 
       return educationRecord;
     });
@@ -359,13 +386,52 @@ class ProfileRepository {
   > {
     const [user] = await db
       .select({
-        onboardingStep: users.onboardingStep,
-        onboardingCompletedAt: users.onboardingCompletedAt,
+        updatedAt: users.updatedAt,
       })
       .from(users)
-      .where(eq(users.user_id, userId));
+      .where(eq(users.id, userId));
 
-    return user;
+    if (!user) {
+      return undefined;
+    }
+
+    const data = await this.getCompletionData(userId);
+    let onboardingStep = "COMPLETED";
+
+    if (!data.profile?.name || !data.profile.gender) {
+      onboardingStep = "BASIC_DETAILS";
+    } else if (!data.profile.dateOfBirth) {
+      onboardingStep = "BIRTHDAY";
+    } else if (!data.profile.heightCm) {
+      onboardingStep = "LOCATION";
+    } else if (
+      !data.profile.city &&
+      !data.profile.state &&
+      !data.profile.country &&
+      (data.profile.latitude === null || data.profile.longitude === null)
+    ) {
+      onboardingStep = "LOCATION";
+    } else if (!data.profile.relationshipStatus) {
+      onboardingStep = "RELATIONSHIP";
+    } else if (data.languageCount === 0) {
+      onboardingStep = "LANGUAGES";
+    } else if (!data.educationExists) {
+      onboardingStep = "EDUCATION";
+    } else if (data.kycStatus !== "verified") {
+      onboardingStep = "KYC";
+    } else if (data.photoCount === 0) {
+      onboardingStep = "PHOTOS";
+    } else if (data.interestCount === 0) {
+      onboardingStep = "INTERESTS";
+    } else if (!data.preferencesExists) {
+      onboardingStep = "PREFERENCES";
+    }
+
+    return {
+      onboardingStep,
+      onboardingCompletedAt:
+        onboardingStep === "COMPLETED" ? user.updatedAt : null,
+    };
   }
 
   async saveProfileAndStep(
@@ -391,14 +457,19 @@ class ProfileRepository {
       } else {
         [profile] = await transaction
           .insert(profiles)
-          .values({ userId, ...values })
+          .values({
+            userId,
+            name: values.name!,
+            gender: values.gender!,
+            ...values,
+          })
           .returning();
       }
 
       await transaction
         .update(users)
-        .set({ onboardingStep, updatedAt: now })
-        .where(eq(users.user_id, userId));
+        .set({ updatedAt: now })
+        .where(eq(users.id, userId));
 
       return profile;
     });

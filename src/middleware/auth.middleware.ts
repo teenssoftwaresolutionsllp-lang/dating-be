@@ -57,7 +57,7 @@ export const authenticate = async (
 
     const user = await AuthRepository.findUserById(session.userId);
 
-    if (!user || user.user_id !== decoded.id) {
+    if (!user || user.id !== decoded.id) {
       return ApiResponse.error(res, {
         statusCode: 401,
         message: "User account not found or deleted",
@@ -74,8 +74,8 @@ export const authenticate = async (
     }
 
     req.user = {
-      id: user.user_id,
-      userId: user.user_id,
+      id: user.id,
+      userId: user.id,
       phone: user.phone,
       countryCode: "+1",
       preferredLanguage: "en",
@@ -122,8 +122,8 @@ export const optionalAuth = async (
 
         if (user && user.status === "active") {
           req.user = {
-            id: user.user_id,
-            userId: user.user_id,
+            id: user.id,
+            userId: user.id,
             phone: user.phone,
             countryCode: "+1",
             preferredLanguage: "en",

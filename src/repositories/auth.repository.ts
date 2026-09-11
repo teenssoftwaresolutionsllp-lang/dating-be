@@ -1,22 +1,20 @@
 import { and, desc, eq, isNull, lt, sql } from "drizzle-orm";
 import { db } from "../db/index";
-import { users, type NewUser, type User } from "../db/schema/users.schema";
-
 import {
   otpVerifications,
   type NewOtpVerification,
   type OtpVerification,
-} from "../db/schema/otp-verifications.schema";
-import {
   userSessions,
   type NewUserSession,
   type UserSession,
-} from "../db/schema/sessions.schema";
+  users,
+  type NewUser,
+  type User,
+} from "../db/schema/index";
 
 class AuthRepository {
   async findLatestActiveOtp(
     phone: string,
-    countryCode: string,
     purpose: string,
   ): Promise<OtpVerification | undefined> {
     const [otp] = await db
@@ -24,10 +22,9 @@ class AuthRepository {
       .from(otpVerifications)
       .where(
         and(
-          eq(otpVerifications.phone, phone),
-          eq(otpVerifications.countryCode, countryCode),
+          eq(otpVerifications.identifier, phone),
           eq(otpVerifications.purpose, purpose),
-          eq(otpVerifications.isVerified, false),
+          isNull(otpVerifications.verifiedAt),
         ),
       )
       .orderBy(desc(otpVerifications.createdAt))
@@ -47,10 +44,7 @@ class AuthRepository {
   ): Promise<{ attempts: number } | undefined> {
     const [otp] = await db
       .update(otpVerifications)
-      .set({
-        attempts: sql`${otpVerifications.attempts} + 1`,
-        updatedAt,
-      })
+      .set({ attempts: sql`${otpVerifications.attempts} + 1` })
       .where(
         and(
           eq(otpVerifications.id, otpId),
@@ -65,7 +59,7 @@ class AuthRepository {
   async markOtpVerified(otpId: string, updatedAt: Date): Promise<void> {
     await db
       .update(otpVerifications)
-      .set({ isVerified: true, updatedAt })
+      .set({ verifiedAt: updatedAt })
       .where(eq(otpVerifications.id, otpId));
   }
 
@@ -84,17 +78,14 @@ class AuthRepository {
     const [user] = await db
       .update(users)
       .set({ phoneVerified: true, updatedAt })
-      .where(eq(users.user_id, userId))
+      .where(eq(users.id, userId))
       .returning();
 
     return user;
   }
 
   async findUserById(userId: string): Promise<User | undefined> {
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.user_id, userId));
+    const [user] = await db.select().from(users).where(eq(users.id, userId));
 
     return user;
   }
@@ -112,7 +103,7 @@ class AuthRepository {
       .where(
         and(
           eq(userSessions.refreshTokenHash, refreshTokenHash),
-          isNull(userSessions.revoked_at),
+          isNull(userSessions.revokedAt),
         ),
       );
 
@@ -126,7 +117,7 @@ class AuthRepository {
       .select()
       .from(userSessions)
       .where(
-        and(eq(userSessions.id, sessionId), isNull(userSessions.revoked_at)),
+        and(eq(userSessions.id, sessionId), isNull(userSessions.revokedAt)),
       );
 
     return session;
@@ -147,16 +138,16 @@ class AuthRepository {
   ): Promise<void> {
     await db
       .update(userSessions)
-      .set({ revoked_at: new Date() })
+      .set({ revokedAt: new Date() })
       .where(eq(userSessions.refreshTokenHash, refreshTokenHash));
   }
 
   async revokeAllSessions(userId: string): Promise<void> {
     await db
       .update(userSessions)
-      .set({ revoked_at: new Date() })
+      .set({ revokedAt: new Date() })
       .where(
-        and(eq(userSessions.userId, userId), isNull(userSessions.revoked_at)),
+        and(eq(userSessions.userId, userId), isNull(userSessions.revokedAt)),
       );
   }
 }

@@ -25,16 +25,21 @@ The API currently supports:
 - languages and interests reference data
 - profile language selection
 - education
-- KYC status and submission
+- KYC document-photo submission with temporary automatic verification
+- single or multiple profile-photo uploads
 - dating preferences
 - onboarding completion validation
 
-The following features are not implemented yet:
+The following features are not mounted as API routes yet:
 
-- Cloudinary profile photo upload
-- admin verification workflow
-- KYC approval workflow
-- complete integration test suite
+- matching and swipe endpoints
+- conversations and messaging endpoints
+- notification endpoints
+- payments and subscription endpoints
+- admin moderation endpoints
+
+The database schemas for several of these domains already exist, but a schema
+table does not mean that an HTTP route is available.
 
 ## 2. Base URL
 
@@ -171,7 +176,8 @@ Use this order to test the complete currently implemented flow:
 17. Try onboarding completion
 18. Test logout or logout-all
 
-The completion request will report `PHOTOS` as missing until at least one profile photo is uploaded to Cloudinary.
+The completion request will report `PHOTOS` as missing until at least one profile photo is uploaded to Cloudinary. KYC is temporarily marked
+`verified` after a successful document-photo upload.
 
 ## 7. Health and Root Routes
 
@@ -542,7 +548,7 @@ Purpose:
 
 - returns the saved onboarding progress
 - lets the web or mobile frontend resume at the correct screen
-- reports whether `onboarding_completed_at` is set
+- reports the step derived from saved onboarding records
 
 Expected response:
 
@@ -597,8 +603,13 @@ Expected response after saving data:
       "name": "Rahul",
       "dateOfBirth": "1998-06-15",
       "gender": "male",
-      "height": 175,
-      "location": "Kolkata",
+      "heightCm": 175,
+      "religion": "Hindu",
+      "city": "Kolkata",
+      "state": "West Bengal",
+      "country": "India",
+      "latitude": 22.5726,
+      "longitude": 88.3639,
       "relationshipStatus": "single",
       "bio": null
     }
@@ -634,7 +645,7 @@ Example birthday and height body:
 ```json
 {
   "dateOfBirth": "1998-06-15",
-  "height": 175
+  "heightCm": 175
 }
 ```
 
@@ -650,7 +661,11 @@ Example location body:
 
 ```json
 {
-  "location": "Kolkata"
+  "city": "Kolkata",
+  "state": "West Bengal",
+  "country": "India",
+  "latitude": 22.5726,
+  "longitude": 88.3639
 }
 ```
 
@@ -661,8 +676,13 @@ Optional supported profile fields:
   "name": "Rahul",
   "dateOfBirth": "1998-06-15",
   "gender": "male",
-  "height": 175,
-  "location": "Kolkata",
+  "heightCm": 175,
+  "religion": "Hindu",
+  "city": "Kolkata",
+  "state": "West Bengal",
+  "country": "India",
+  "latitude": 22.5726,
+  "longitude": 88.3639,
   "relationshipStatus": "single",
   "bio": "Short profile biography"
 }
@@ -673,9 +693,11 @@ Validation:
 - at least one field is required
 - date must use `YYYY-MM-DD`
 - date cannot be in the future
-- height must be between 100 and 250 cm
+- `heightCm` must be between 100 and 250 cm
 - text lengths are limited
-- location is stored as a text value for now
+- `dateOfBirth` is nullable while onboarding is in progress
+- `religion` is optional and stores the user's own religion
+- location is stored in structured city/state/country and coordinate fields
 
 Expected response:
 
@@ -690,7 +712,7 @@ Expected response:
 }
 ```
 
-### 9.4 Upload a profile photo to Cloudinary
+### 9.4 Upload one or multiple profile photos to Cloudinary
 
 ```http
 POST {{baseUrl}}/api/v1/profile/photos
@@ -698,7 +720,7 @@ POST {{baseUrl}}/api/v1/profile/photos
 
 Purpose:
 
-- accepts one profile image as `multipart/form-data`
+- accepts one or multiple profile images as `multipart/form-data`
 - uploads the image to Cloudinary using the authenticated user's folder
 - stores the Cloudinary `public_id` and `secure_url` in `profile_photos`
 - marks the first uploaded photo as the primary photo
@@ -708,10 +730,14 @@ Postman setup:
 
 1. Select the **Body** tab.
 2. Select **form-data**.
-3. Add a field named `photo`.
+3. Add one or more fields named `photo`.
 4. Change its type from **Text** to **File**.
 5. Select a JPEG, PNG, or WebP file up to 5 MB.
 6. Add `Authorization: Bearer {{accessToken}}` under the **Headers** tab.
+
+The route accepts up to 10 files per request. Each file must be JPEG, PNG, or
+WebP and no larger than 5 MB. The first uploaded photo is primary when the user
+does not already have a primary photo.
 
 Expected response:
 
@@ -719,17 +745,19 @@ Expected response:
 {
   "success": true,
   "statusCode": 201,
-  "message": "Profile photo uploaded successfully",
+  "message": "3 profile photos uploaded successfully",
   "data": {
-    "photo": {
-      "id": "photo-uuid",
-      "userId": "user-uuid",
-      "storageKey": "dating-app/profiles/user-uuid/user-uuid-1234567890",
-      "url": "https://res.cloudinary.com/example/image/upload/v123/dating-app/profiles/user-uuid/user-uuid-1234567890.jpg",
-      "displayOrder": 0,
-      "isPrimary": true,
-      "verificationStatus": "pending"
-    }
+    "photos": [
+      {
+        "id": "photo-uuid",
+        "userId": "user-uuid",
+        "storageKey": "dating-app/profiles/user-uuid/user-uuid-1234567890",
+        "url": "https://res.cloudinary.com/example/image/upload/v123/dating-app/profiles/user-uuid/user-uuid-1234567890.jpg",
+        "displayOrder": 0,
+        "isPrimary": true,
+        "verificationStatus": "pending"
+      }
+    ]
   }
 }
 ```
@@ -831,7 +859,7 @@ Expected response:
 ### 9.8 Save profile languages
 
 ```http
-PUT {{baseUrl}}/api/v1/profile/languages
+PATCH {{baseUrl}}/api/v1/profile/languages
 ```
 
 Request body:
@@ -873,7 +901,7 @@ Expected response:
 ### 9.9 Save education
 
 ```http
-PUT {{baseUrl}}/api/v1/profile/education
+PATCH {{baseUrl}}/api/v1/profile/education
 ```
 
 Request body:
@@ -909,19 +937,36 @@ Expected response:
 }
 ```
 
-### 9.10 Submit KYC
+### 9.10 Submit KYC document photo
 
 ```http
 POST {{baseUrl}}/api/v1/kyc
 ```
 
-Request body:
+Request content type:
 
-```json
-{
-  "documentType": "PASSPORT",
-  "documentNumber": "A123456789"
-}
+```http
+Content-Type: multipart/form-data
+```
+
+Postman form-data fields:
+
+```text
+documentType: passport
+documentNumber: A123456789 (optional)
+documentPhoto: <JPEG, PNG, or WebP file, maximum 5 MB>
+```
+
+The file field must be named `documentPhoto`. The document number is hashed
+with SHA-256 when supplied. The current temporary flow marks a successful
+upload as `verified`; manual or provider-based review can be added later.
+
+Example fields:
+
+```text
+documentType = passport
+documentNumber = A123456789
+documentPhoto = passport.jpg
 ```
 
 Purpose:
@@ -930,7 +975,7 @@ Purpose:
 - hashes the document number with SHA-256
 - never stores the raw document number
 - updates an existing KYC record instead of duplicating it
-- advances onboarding progress to `PHOTOS`
+- makes KYC eligible for onboarding completion with status `verified`
 
 Expected response:
 
@@ -940,7 +985,7 @@ Expected response:
   "statusCode": 200,
   "message": "KYC submitted successfully",
   "data": {
-    "status": "pending"
+    "status": "verified"
   }
 }
 ```
@@ -966,7 +1011,7 @@ Expected response when submitted:
   "statusCode": 200,
   "message": "KYC status retrieved successfully",
   "data": {
-    "status": "pending"
+    "status": "verified"
   }
 }
 ```
@@ -1057,11 +1102,12 @@ Request body:
 {
   "minAge": 24,
   "maxAge": 30,
-  "maxDistance": 50,
-  "preferredGender": "female",
-  "relationshipIntention": "MARRIAGE",
-  "religionPreference": "ANY",
-  "communityPreference": "ANY",
+  "maxDistanceKm": 50,
+  "preferredGenders": ["female"],
+  "relationshipIntentions": ["marriage"],
+  "religionPreferences": ["Hindu", "Christian"],
+  "preferredInterestIds": [1, 3, 7],
+  "communityPreferences": ["ANY"],
   "verifiedOnly": false
 }
 ```
@@ -1076,7 +1122,8 @@ Validation:
 
 - minimum age is at least 18
 - maximum age cannot be lower than minimum age
-- maximum distance must be between 1 and 1000
+- `maxDistanceKm` must be between 1 and 1000
+- preference arrays must contain valid strings or positive interest IDs
 - `verifiedOnly` must be boolean when supplied
 
 Expected response:
@@ -1107,10 +1154,10 @@ Request body:
 Purpose:
 
 - performs final database-backed completeness validation
-- does not trust `onboarding_step` alone
+- derives completion from saved profile and related records
 - does not trust a request body flag such as `completed: true`
-- sets `onboarding_step` to `COMPLETED` only when all requirements pass
-- sets `onboarding_completed_at` to the current timestamp only on success
+- derives the current onboarding step from profile and related records
+- returns success only when all requirements pass
 
 Incomplete response example:
 
@@ -1145,7 +1192,7 @@ Current completion requirements:
 - basic profile fields
 - date of birth
 - height
-- location text
+- at least one location value: city, state, country, or both coordinates
 - relationship status
 - at least one language
 - education
@@ -1155,6 +1202,8 @@ Current completion requirements:
 - dating preferences
 
 This endpoint reports `PHOTOS` as missing until at least one profile photo is uploaded to Cloudinary.
+KYC must have status `verified`; the current upload flow sets this immediately
+after a successful document-photo upload.
 
 ## 10. Postman Environment Setup
 
@@ -1176,8 +1225,8 @@ Recommended Postman request order:
 6. `PATCH {{baseUrl}}/api/v1/profile`
 7. `GET {{baseUrl}}/api/v1/profile/me`
 8. `GET {{baseUrl}}/api/v1/languages`
-9. `PUT {{baseUrl}}/api/v1/profile/languages`
-10. `PUT {{baseUrl}}/api/v1/profile/education`
+9. `PATCH {{baseUrl}}/api/v1/profile/languages`
+10. `PATCH {{baseUrl}}/api/v1/profile/education`
 11. `POST {{baseUrl}}/api/v1/kyc`
 12. `GET {{baseUrl}}/api/v1/kyc`
 13. `GET {{baseUrl}}/api/v1/interests`
@@ -1219,13 +1268,13 @@ Send:
 
 Expected status: `400`.
 
-### Invalid location value
+### Invalid profile value
 
-Send an empty location value in the profile request:
+Send an invalid empty city value in the profile request:
 
 ```json
 {
-  "location": ""
+  "city": ""
 }
 ```
 
@@ -1296,36 +1345,33 @@ blocked
 deleted
 ```
 
-Onboarding progress is stored separately:
-
-```text
-users.onboarding_step
-users.onboarding_completed_at
-```
+Onboarding progress is derived from the saved profile, languages, education,
+KYC, photos, interests, and dating-preferences records. It is not stored in
+removed `users.onboarding_step` or `users.onboarding_completed_at` columns.
 
 ## 13. Current Database Tables Used by Onboarding
 
-| Table                | Purpose                                |
-| -------------------- | -------------------------------------- |
-| `users`              | Account status and onboarding progress |
-| `user_sessions`      | Authenticated sessions                 |
-| `profiles`           | Core profile details                   |
-| `languages`          | Predefined language master data        |
-| `profile_languages`  | User-language relationships            |
-| `education`          | One education record per user          |
-| `kyc_verifications`  | Hashed KYC submission and status       |
-| `profile_photos`     | Cloudinary profile photo metadata      |
-| `interests`          | Predefined interest master data        |
-| `profile_interests`  | User-interest relationships            |
-| `dating_preferences` | One preference record per user         |
+| Table                | Purpose                                                                    |
+| -------------------- | -------------------------------------------------------------------------- |
+| `users`              | Account, authentication, and status data                                   |
+| `user_sessions`      | Authenticated sessions                                                     |
+| `profiles`           | Core profile details, religion, and structured location                    |
+| `languages`          | Predefined language master data                                            |
+| `profile_languages`  | User-language relationships                                                |
+| `education`          | Education level and qualification                                          |
+| `kyc_verifications`  | Hashed KYC data, document image metadata, and status                       |
+| `profile_photos`     | Cloudinary profile photo metadata                                          |
+| `interests`          | Predefined interest master data                                            |
+| `profile_interests`  | User-interest relationships                                                |
+| `dating_preferences` | Age, distance, gender, religion, intention, and preferred-interest filters |
 
 ## 14. Known Limitations
 
 1. The refresh endpoint currently reads the refresh token from an HTTP-only cookie. React Native body-token refresh support is not implemented yet.
 2. Languages and interests require master data to be inserted before selection requests can succeed.
 3. Profile photos are stored in Cloudinary; the local filesystem is not used for new profile photo uploads.
-4. KYC submission creates a `pending` record, but no admin verification workflow exists yet to change it to `verified`.
-5. Location search and predefined location IDs are intentionally deferred; onboarding currently stores the selected location as text in `profiles.location`.
+4. KYC uploads are currently marked `verified` immediately. Admin or provider verification is not implemented yet.
+5. Location search and predefined location IDs are intentionally deferred; onboarding stores structured location fields and optional coordinates.
 6. The current documentation reflects the implemented API and should be updated whenever a new route is added.
 
 ## 15. Implementation Verification

@@ -51,14 +51,13 @@ export class AuthService {
     // Check for existing active OTP with cooldown (30s)
     const latestOtpRecord = await AuthRepository.findLatestActiveOtp(
       phone,
-      countryCode,
       OTP_PURPOSES.LOGIN,
     );
 
-    if (latestOtpRecord && latestOtpRecord.resendCooldownUntil) {
-      const cooldownTime = new Date(
-        latestOtpRecord.resendCooldownUntil,
-      ).getTime();
+    if (latestOtpRecord) {
+      const cooldownTime =
+        new Date(latestOtpRecord.createdAt).getTime() +
+        OTP_CONFIG.RESEND_COOLDOWN_SECONDS * 1000;
       const currentTime = now.getTime();
       if (cooldownTime > currentTime) {
         const remainingSeconds = Math.ceil((cooldownTime - currentTime) / 1000);
@@ -84,15 +83,11 @@ export class AuthService {
 
     // Save OTP to database
     await AuthRepository.createOtp({
-      phone,
-      countryCode,
-      otp: AuthService.hashOtp(otpCode),
+      identifier: phone,
+      codeHash: AuthService.hashOtp(otpCode),
       purpose: OTP_PURPOSES.LOGIN,
       attempts: 0,
-      maxAttempts: OTP_CONFIG.MAX_ATTEMPTS,
-      isVerified: false,
       expiresAt,
-      resendCooldownUntil,
     });
 
     // Send SMS simulation/gateway
@@ -129,7 +124,6 @@ export class AuthService {
 
     const otpRecord = await AuthRepository.findLatestActiveOtp(
       phone,
-      countryCode,
       OTP_PURPOSES.LOGIN,
     );
 
@@ -151,7 +145,7 @@ export class AuthService {
       throw error;
     }
 
-    if (otpRecord.attempts >= otpRecord.maxAttempts) {
+    if (otpRecord.attempts >= OTP_CONFIG.MAX_ATTEMPTS) {
       const error = new Error(
         "Maximum OTP attempts exceeded. Please request a new OTP.",
       ) as AppError;
@@ -160,16 +154,16 @@ export class AuthService {
       throw error;
     }
 
-    if (otpRecord.otp !== AuthService.hashOtp(otp)) {
+    if (otpRecord.codeHash !== AuthService.hashOtp(otp)) {
       // Increment attempt counter
       const updatedOtp = await AuthRepository.incrementOtpAttempts(
         otpRecord.id,
-        otpRecord.maxAttempts,
+        OTP_CONFIG.MAX_ATTEMPTS,
         now,
       );
 
-      const attemptsUsed = updatedOtp?.attempts ?? otpRecord.maxAttempts;
-      const remainingAttempts = otpRecord.maxAttempts - attemptsUsed;
+      const attemptsUsed = updatedOtp?.attempts ?? OTP_CONFIG.MAX_ATTEMPTS;
+      const remainingAttempts = OTP_CONFIG.MAX_ATTEMPTS - attemptsUsed;
       const error = new Error(
         `Invalid OTP code. ${remainingAttempts > 0 ? `${remainingAttempts} attempt(s) remaining.` : "Please request a new OTP."}`,
       ) as AppError;
@@ -192,10 +186,11 @@ export class AuthService {
       // Auto-register new user
       isNewUser = true;
       user = await AuthRepository.createUser({
+        email: `${phone}@phone.local`,
         phone,
         phoneVerified: true,
         status: "active",
-        onboardingStep: "BASIC_DETAILS",
+        authProvider: "phone",
       });
     } else {
       // Update existing user verification and display language
@@ -205,7 +200,7 @@ export class AuthService {
       };
 
       user = await AuthRepository.markUserPhoneVerified(
-        existingUser.user_id,
+        existingUser.id,
         updates.updatedAt,
       );
     }
@@ -214,7 +209,7 @@ export class AuthService {
     const sessionId = randomUUID();
     const tokens = generateTokens(
       {
-        id: user.user_id,
+        id: user.id,
         phone: user.phone,
         role: user.role,
       },
@@ -228,7 +223,7 @@ export class AuthService {
 
     await AuthRepository.createSession({
       id: sessionId,
-      userId: user.user_id,
+      userId: user.id,
       refreshTokenHash: AuthService.hashRefreshToken(tokens.refreshToken),
       deviceInfo: userAgent,
       ipAddress,
@@ -238,8 +233,8 @@ export class AuthService {
     return {
       isNewUser,
       user: {
-        id: user.user_id,
-        userId: user.user_id,
+        id: user.id,
+        userId: user.id,
         phone: user.phone,
         countryCode,
         preferredLanguage: preferredLanguage || "en",
@@ -266,8 +261,8 @@ export class AuthService {
     }
 
     return {
-      id: user.user_id,
-      userId: user.user_id,
+      id: user.id,
+      userId: user.id,
       phone: user.phone,
       countryCode: "+1",
       preferredLanguage: "en",
@@ -323,7 +318,7 @@ export class AuthService {
 
     const tokens = generateTokens(
       {
-        id: user.user_id,
+        id: user.id,
         phone: user.phone,
         role: user.role,
       },

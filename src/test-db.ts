@@ -1,5 +1,5 @@
 import { db } from "./db/index";
-import { users } from "./db/schema/users.schema";
+import { users } from "./db/schema";
 
 const testDatabase = async (): Promise<void> => {
   try {

@@ -79,20 +79,24 @@ export class ProfileController {
       });
     }
 
-    if (!req.file) {
+    const files = Array.isArray(req.files)
+      ? (req.files as Express.Multer.File[])
+      : [];
+
+    if (files.length === 0) {
       return ApiResponse.error(res, {
         statusCode: 400,
-        message: "Profile photo is required",
+        message: "At least one profile photo is required",
         code: "PHOTO_REQUIRED",
       });
     }
 
-    const photo = await ProfileService.addPhoto(userId, req.file);
+    const photos = await ProfileService.addPhotos(userId, files);
 
     return ApiResponse.success(res, {
       statusCode: 201,
-      message: "Profile photo uploaded successfully",
-      data: { photo },
+      message: `${photos.length} profile photo${photos.length === 1 ? "" : "s"} uploaded successfully`,
+      data: { photos },
     });
   }
 
@@ -245,6 +249,9 @@ export class ProfileController {
       userId,
       req.body.documentType,
       req.body.documentNumber,
+      req.file
+        ? { buffer: req.file.buffer, originalName: req.file.originalname }
+        : undefined,
     );
 
     return ApiResponse.success(res, {

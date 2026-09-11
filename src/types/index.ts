@@ -1,17 +1,9 @@
 import type { Request } from "express";
-import type { users } from "../db/schema/users.schema";
-// import type { otpVerifications } from "../db/schema/otp-verifications";
-// import type { userSessions } from "../db/schema/user-sessions";
+import type { users } from "../db/schema";
 
 // Database Inferred Models
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
-
-// export type OtpVerification = typeof otpVerifications.$inferSelect;
-// export type NewOtpVerification = typeof otpVerifications.$inferInsert;
-
-// export type UserSession = typeof userSessions.$inferSelect;
-// export type NewUserSession = typeof userSessions.$inferInsert;
 
 // Safe user data returned by authenticated endpoints.
 export interface SafeUser {

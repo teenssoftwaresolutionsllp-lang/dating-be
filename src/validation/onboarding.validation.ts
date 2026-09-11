@@ -21,7 +21,7 @@ export const educationSchema = z.object({
 
 export const kycSchema = z.object({
   documentType: z.string().trim().min(1).max(30),
-  documentNumber: z.string().trim().min(4).max(100),
+  documentNumber: z.string().trim().min(4).max(100).optional(),
 });
 
 export const interestSelectionSchema = z.object({
@@ -38,11 +38,30 @@ export const datingPreferencesSchema = z
   .object({
     minAge: z.number().int().min(18).max(100).optional(),
     maxAge: z.number().int().min(18).max(100).optional(),
-    maxDistance: z.number().int().min(1).max(1000).optional(),
-    preferredGender: z.string().trim().max(20).optional(),
-    relationshipIntention: z.string().trim().max(30).optional(),
-    religionPreference: z.string().trim().max(30).optional(),
-    communityPreference: z.string().trim().max(30).optional(),
+    maxDistanceKm: z.number().int().min(1).max(1000).optional(),
+    preferredGenders: z
+      .array(z.string().trim().min(1).max(20))
+      .max(10)
+      .optional(),
+    preferredInterestIds: z
+      .array(z.number().int().positive())
+      .max(30)
+      .refine((ids) => new Set(ids).size === ids.length, {
+        message: "Preferred interest IDs must not be duplicated",
+      })
+      .optional(),
+    relationshipIntentions: z
+      .array(z.string().trim().min(1).max(30))
+      .max(10)
+      .optional(),
+    religionPreferences: z
+      .array(z.string().trim().min(1).max(50))
+      .max(10)
+      .optional(),
+    communityPreferences: z
+      .array(z.string().trim().min(1).max(50))
+      .max(10)
+      .optional(),
     verifiedOnly: z.boolean().optional(),
   })
   .refine((values) => Object.keys(values).length > 0, {

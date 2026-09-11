@@ -41,11 +41,52 @@ router.patch(
   asyncHandler(ProfileController.updateProfile),
 );
 
+// Return predefined reference data for onboarding selection controls.
+router.get("/languages", asyncHandler(ProfileController.getLanguages));
+router.get("/interests", asyncHandler(ProfileController.getInterests));
+
+// Replace the authenticated user's complete language selection.
+router.patch(
+  "/profile/languages",
+  authenticate,
+  validateBody(languageSelectionSchema),
+  asyncHandler(ProfileController.updateLanguages),
+);
+
+// Replace the authenticated user's complete interest selection.
+router.put(
+  "/profile/interests",
+  authenticate,
+  validateBody(interestSelectionSchema),
+  asyncHandler(ProfileController.updateInterests),
+);
+
+// Create or update the authenticated user's education record.
+router.patch(
+  "/profile/education",
+  authenticate,
+  validateBody(educationSchema),
+  asyncHandler(ProfileController.updateEducation),
+);
+
+// Submit KYC data; the service stores only a hash of the document number.
+router.post(
+  "/kyc",
+  authenticate,
+  uploadProfilePhoto.single("documentPhoto"),
+  handlePhotoUploadError,
+  validateBody(kycSchema),
+  asyncHandler(ProfileController.submitKyc),
+);
+
+// Return the authenticated user's safe KYC status without sensitive data.
+router.get("/kyc", authenticate, asyncHandler(ProfileController.getKyc));
+
 // Upload a profile image to Cloudinary and save its metadata in PostgreSQL.
 router.post(
   "/profile/photos",
   authenticate,
-  uploadProfilePhoto.single("photo"),
+  uploadProfilePhoto.array("photo", 10),
   handlePhotoUploadError,
   asyncHandler(ProfileController.uploadPhoto),
 );
@@ -63,45 +104,6 @@ router.delete(
   authenticate,
   asyncHandler(ProfileController.deletePhoto),
 );
-
-// Return predefined reference data for onboarding selection controls.
-router.get("/languages", asyncHandler(ProfileController.getLanguages));
-router.get("/interests", asyncHandler(ProfileController.getInterests));
-
-// Replace the authenticated user's complete language selection.
-router.put(
-  "/profile/languages",
-  authenticate,
-  validateBody(languageSelectionSchema),
-  asyncHandler(ProfileController.updateLanguages),
-);
-
-// Replace the authenticated user's complete interest selection.
-router.put(
-  "/profile/interests",
-  authenticate,
-  validateBody(interestSelectionSchema),
-  asyncHandler(ProfileController.updateInterests),
-);
-
-// Create or update the authenticated user's education record.
-router.put(
-  "/profile/education",
-  authenticate,
-  validateBody(educationSchema),
-  asyncHandler(ProfileController.updateEducation),
-);
-
-// Submit KYC data; the service stores only a hash of the document number.
-router.post(
-  "/kyc",
-  authenticate,
-  validateBody(kycSchema),
-  asyncHandler(ProfileController.submitKyc),
-);
-
-// Return the authenticated user's safe KYC status without sensitive data.
-router.get("/kyc", authenticate, asyncHandler(ProfileController.getKyc));
 
 // Create or update the authenticated user's dating preferences.
 router.patch(

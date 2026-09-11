@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Profile } from "../db/schema/profiles.schema";
-import type { Language } from "../db/schema/languages.schema";
+import type { Language, Profile } from "../db/schema";
 import ProfileRepository, {
   type ProfileUpdate,
 } from "../repositories/profile.repository";
@@ -34,28 +33,52 @@ const createNotFoundError = (message: string): AppError => {
 };
 
 class ProfileService {
-  async addPhoto(userId: string, file: Express.Multer.File) {
+  async addPhotos(userId: string, files: Express.Multer.File[]) {
     const existingPhotos = await ProfileRepository.findPhotosByUserId(userId);
-    const uploadedAsset = await uploadProfilePhoto(
-      file.buffer,
-      userId,
-      file.originalname,
-    );
+    const uploadedAssets: Array<{
+      publicId: string;
+      file: Express.Multer.File;
+      url: string;
+    }> = [];
 
     try {
-      return await ProfileRepository.createProfilePhoto({
-        userId,
-        storageKey: uploadedAsset.public_id,
-        url: uploadedAsset.secure_url,
-        displayOrder: existingPhotos.length,
-        isPrimary: existingPhotos.length === 0,
-        verificationStatus: "pending",
-      });
+      for (const file of files) {
+        const uploadedAsset = await uploadProfilePhoto(
+          file.buffer,
+          userId,
+          file.originalname,
+        );
+        uploadedAssets.push({
+          publicId: uploadedAsset.public_id,
+          file,
+          url: uploadedAsset.secure_url,
+        });
+      }
+
+      const photos = [];
+      for (const [index, asset] of uploadedAssets.entries()) {
+        photos.push(
+          await ProfileRepository.createProfilePhoto({
+            userId,
+            storageKey: asset.publicId,
+            url: asset.url,
+            displayOrder: existingPhotos.length + index,
+            isPrimary: existingPhotos.length === 0 && index === 0,
+            verificationStatus: "pending",
+            mimeType: asset.file.mimetype,
+            fileSizeBytes: asset.file.size,
+          }),
+        );
+      }
+
+      return photos;
     } catch (error) {
-      try {
-        await deleteCloudinaryAsset(uploadedAsset.public_id);
-      } catch (cleanupError) {
-        console.error("Failed to clean up Cloudinary photo:", cleanupError);
+      for (const asset of uploadedAssets) {
+        try {
+          await deleteCloudinaryAsset(asset.publicId);
+        } catch (cleanupError) {
+          console.error("Failed to clean up Cloudinary photo:", cleanupError);
+        }
       }
 
       throw error;
@@ -242,24 +265,47 @@ class ProfileService {
   async submitKyc(
     userId: string,
     documentType: string,
-    documentNumber: string,
+    documentNumber: string | undefined,
+    documentImage?: { buffer: Buffer; originalName: string },
   ): Promise<{ status: string }> {
     const user = await ProfileRepository.findOnboardingStatus(userId);
     if (!user) {
       throw createNotFoundError("User not found");
     }
 
-    const documentNumberHash = createHash("sha256")
-      .update(documentNumber)
-      .digest("hex");
+    if (!documentImage) {
+      const error = new Error("KYC document photo is required") as AppError;
+      error.statusCode = 400;
+      error.code = "KYC_DOCUMENT_PHOTO_REQUIRED";
+      throw error;
+    }
 
-    const kyc = await ProfileRepository.upsertKyc(
-      userId,
-      documentType,
-      documentNumberHash,
+    const documentNumberHash = createHash("sha256")
+      .update(documentNumber ?? `${userId}:${documentType}`)
+      .digest("hex");
+    const uploadedAsset = await uploadProfilePhoto(
+      documentImage.buffer,
+      `${userId}-kyc`,
+      documentImage.originalName,
     );
 
-    return { status: kyc.status };
+    try {
+      const kyc = await ProfileRepository.upsertKyc(
+        userId,
+        documentType,
+        documentNumberHash,
+        { storageKey: uploadedAsset.public_id, url: uploadedAsset.secure_url },
+      );
+
+      return { status: kyc.status };
+    } catch (error) {
+      try {
+        await deleteCloudinaryAsset(uploadedAsset.public_id);
+      } catch (cleanupError) {
+        console.error("Failed to clean up KYC document:", cleanupError);
+      }
+      throw error;
+    }
   }
 
   async getKyc(userId: string): Promise<{ status: string } | null> {
@@ -300,12 +346,17 @@ class ProfileService {
       !data.profile?.name ||
       !data.profile.dateOfBirth ||
       !data.profile.gender ||
-      !data.profile.height
+      !data.profile.heightCm
     ) {
       missingSteps.push("BASIC_DETAILS");
     }
 
-    if (!data.profile?.location) {
+    if (
+      !data.profile?.city &&
+      !data.profile?.state &&
+      !data.profile?.country &&
+      (data.profile?.latitude === null || data.profile?.longitude === null)
+    ) {
       missingSteps.push("LOCATION");
     }
 
@@ -356,7 +407,7 @@ class ProfileService {
       profile.name &&
       profile.gender &&
       profile.dateOfBirth &&
-      profile.height
+      profile.heightCm
     ) {
       nextStep = "LOCATION";
     }
@@ -365,8 +416,11 @@ class ProfileService {
       profile.name &&
       profile.gender &&
       profile.dateOfBirth &&
-      profile.height &&
-      profile.location
+      profile.heightCm &&
+      (profile.city ||
+        profile.state ||
+        profile.country ||
+        (profile.latitude !== null && profile.longitude !== null))
     ) {
       nextStep = "RELATIONSHIP";
     }
@@ -375,8 +429,11 @@ class ProfileService {
       profile.name &&
       profile.gender &&
       profile.dateOfBirth &&
-      profile.height &&
-      profile.location &&
+      profile.heightCm &&
+      (profile.city ||
+        profile.state ||
+        profile.country ||
+        (profile.latitude !== null && profile.longitude !== null)) &&
       profile.relationshipStatus
     ) {
       nextStep = "LANGUAGES";

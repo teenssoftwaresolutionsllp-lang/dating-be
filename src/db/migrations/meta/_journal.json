@@ -134,6 +134,55 @@
       "when": 1789013737693,
       "tag": "0018_old_red_skull",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1789072031843,
+      "tag": "0019_greedy_sir_ram",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1789072066521,
+      "tag": "0020_concerned_wallop",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1789073880918,
+      "tag": "0021_slow_zuras",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1789099192891,
+      "tag": "0022_absent_madame_masque",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1789118615461,
+      "tag": "0023_nappy_dust",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1789123031329,
+      "tag": "0024_tough_tarantula",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1789124115640,
+      "tag": "0025_cute_mister_fear",
+      "breakpoints": true
     }
   ]
 }

@@ -4,7 +4,7 @@ import AuthController from "../controllers/auth.controller";
 import { asyncHandler } from "../middleware/error.middleware";
 import { authenticate } from "../middleware/auth.middleware";
 import { validateBody } from "../middleware/validation.middleware";
-import { sendOtpSchema, verifyOtpSchema } from "../validation/auth.validation";
+import { sendOtpSchema, verifyOtpSchema } from "../validation";
 
 const router = Router();
 

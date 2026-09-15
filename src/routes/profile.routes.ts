@@ -8,14 +8,14 @@ import {
   uploadProfilePhoto,
 } from "../middleware/photo-upload.middleware";
 import { validateBody } from "../middleware/validation.middleware";
-import { profileUpdateSchema } from "../validation/profile.validation";
 import {
+  profileUpdateSchema,
   educationSchema,
   datingPreferencesSchema,
   interestSelectionSchema,
   kycSchema,
   languageSelectionSchema,
-} from "../validation/onboarding.validation";
+} from "../validation";
 
 const router = Router();
 
@@ -27,11 +27,7 @@ router.get(
 );
 
 // Return the authenticated user's saved profile for pre-filling forms.
-router.get(
-  "/me",
-  authenticate,
-  asyncHandler(ProfileController.getProfile),
-);
+router.get("/me", authenticate, asyncHandler(ProfileController.getProfile));
 
 // Create or update core profile fields such as name, birthday, gender, and height.
 router.patch(
@@ -92,11 +88,7 @@ router.post(
 );
 
 // Return the authenticated user's uploaded photo metadata and URLs.
-router.get(
-  "/photos",
-  authenticate,
-  asyncHandler(ProfileController.getPhotos),
-);
+router.get("/photos", authenticate, asyncHandler(ProfileController.getPhotos));
 
 // Delete a photo only when it belongs to the authenticated user.
 router.delete(

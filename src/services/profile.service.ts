@@ -157,7 +157,23 @@ class ProfileService {
 
     const nextStep = this.getNextStep(mergedProfile, status.onboardingStep);
 
-    return ProfileRepository.saveProfileAndStep(userId, values, nextStep);
+    const hasLocationUpdate = [
+      "city",
+      "state",
+      "country",
+      "latitude",
+      "longitude",
+    ].some((field) => values[field as keyof ProfileUpdate] !== undefined);
+
+    const profileValues = hasLocationUpdate
+      ? { ...values, locationUpdatedAt: new Date() }
+      : values;
+
+    return ProfileRepository.saveProfileAndStep(
+      userId,
+      profileValues,
+      nextStep,
+    );
   }
 
   async getLanguages(): Promise<Language[]> {
@@ -256,6 +272,17 @@ class ProfileService {
       ) as AppError;
       error.statusCode = 400;
       error.code = "PROFILE_REQUIRED";
+      throw error;
+    }
+
+    const existingEducation =
+      await ProfileRepository.findEducationByUserId(userId);
+    if (!existingEducation && !values.educationLevel) {
+      const error = new Error(
+        "educationLevel is required for the first education update",
+      ) as AppError;
+      error.statusCode = 400;
+      error.code = "EDUCATION_LEVEL_REQUIRED";
       throw error;
     }
 

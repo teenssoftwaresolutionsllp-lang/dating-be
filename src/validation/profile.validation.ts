@@ -17,6 +17,7 @@ export const profileUpdateSchema = z
     gender: z.string().trim().min(1).max(30).optional(),
     religion: z.string().trim().min(1).max(50).optional(),
     heightCm: z.number().int().min(100).max(250).optional(),
+    location: z.string().trim().min(1).max(100).optional(),
     city: z.string().trim().min(1).max(100).optional(),
     state: z.string().trim().min(1).max(100).optional(),
     country: z.string().trim().min(1).max(100).optional(),
@@ -27,4 +28,10 @@ export const profileUpdateSchema = z
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: "At least one profile field is required",
-  });
+  })
+  .transform(({ location, ...value }) => ({
+    ...value,
+    ...(value.city === undefined && location !== undefined
+      ? { city: location }
+      : {}),
+  }));

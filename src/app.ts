@@ -38,14 +38,13 @@ app.get("/api/health", (_req: Request, res: Response) => {
     timestamp: new Date().toISOString(),
   });
 });
+// API Routes
+
+//authentication routes
 app.use("/api/v1/auth", authRoutes);
-app.use("/api/v1", profileRoutes);
-// =================================================================
-// API Routes (v1)
-// =================================================================
-// Authentication — Mounted under /api/v1/auth and /auth (legacy)
-// app.use("/api/v1/auth", authRoutes);
-// app.use("/auth", authRoutes);
+
+//profile creation routes
+app.use("/api/v1/profile", profileRoutes);
 
 // =================================================================
 // Error Handling

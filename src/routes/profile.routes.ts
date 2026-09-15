@@ -28,14 +28,14 @@ router.get(
 
 // Return the authenticated user's saved profile for pre-filling forms.
 router.get(
-  "/profile/me",
+  "/me",
   authenticate,
   asyncHandler(ProfileController.getProfile),
 );
 
 // Create or update core profile fields such as name, birthday, gender, and height.
 router.patch(
-  "/profile",
+  "/update-profile",
   authenticate,
   validateBody(profileUpdateSchema),
   asyncHandler(ProfileController.updateProfile),
@@ -47,7 +47,7 @@ router.get("/interests", asyncHandler(ProfileController.getInterests));
 
 // Replace the authenticated user's complete language selection.
 router.patch(
-  "/profile/languages",
+  "/languages",
   authenticate,
   validateBody(languageSelectionSchema),
   asyncHandler(ProfileController.updateLanguages),
@@ -55,15 +55,15 @@ router.patch(
 
 // Replace the authenticated user's complete interest selection.
 router.put(
-  "/profile/interests",
+  "/interests",
   authenticate,
   validateBody(interestSelectionSchema),
   asyncHandler(ProfileController.updateInterests),
 );
 
-// Create or update the authenticated user's education record.
+// Create or update the authenticated user's education record.and designation.salary
 router.patch(
-  "/profile/education",
+  "/education",
   authenticate,
   validateBody(educationSchema),
   asyncHandler(ProfileController.updateEducation),
@@ -84,7 +84,7 @@ router.get("/kyc", authenticate, asyncHandler(ProfileController.getKyc));
 
 // Upload a profile image to Cloudinary and save its metadata in PostgreSQL.
 router.post(
-  "/profile/photos",
+  "/photos",
   authenticate,
   uploadProfilePhoto.array("photo", 10),
   handlePhotoUploadError,
@@ -93,14 +93,14 @@ router.post(
 
 // Return the authenticated user's uploaded photo metadata and URLs.
 router.get(
-  "/profile/photos",
+  "/photos",
   authenticate,
   asyncHandler(ProfileController.getPhotos),
 );
 
 // Delete a photo only when it belongs to the authenticated user.
 router.delete(
-  "/profile/photos/:photoId",
+  "/photos/:photoId",
   authenticate,
   asyncHandler(ProfileController.deletePhoto),
 );

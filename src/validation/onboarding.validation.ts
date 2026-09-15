@@ -11,7 +11,7 @@ export const languageSelectionSchema = z.object({
 });
 
 export const educationSchema = z.object({
-  educationLevel: z.string().trim().min(1).max(30),
+  educationLevel: z.string().trim().min(1).max(30).optional(),
   qualification: z.string().trim().max(100).optional(),
   profession: z.string().trim().max(100).optional(),
   occupation: z.string().trim().max(100).optional(),

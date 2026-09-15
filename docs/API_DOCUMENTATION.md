@@ -530,7 +530,7 @@ Expected response shape:
 
 ## 9. Profile and Onboarding Routes
 
-These routes are mounted under `/api/v1`.
+These routes are mounted under `/api/v1/profile`.
 
 Protected routes require:
 
@@ -541,7 +541,7 @@ Authorization: Bearer {{accessToken}}
 ### 9.1 Get onboarding status
 
 ```http
-GET {{baseUrl}}/api/v1/onboarding/status
+GET {{baseUrl}}/api/v1/profile/onboarding/status
 ```
 
 Purpose:
@@ -620,7 +620,7 @@ Expected response after saving data:
 ### 9.3 Save or update profile data
 
 ```http
-PATCH {{baseUrl}}/api/v1/profile
+PATCH {{baseUrl}}/api/v1/profile/update-profile
 ```
 
 Purpose:
@@ -829,7 +829,7 @@ If the photo belongs to another user or does not exist, the API returns `PHOTO_N
 ### 9.7 List languages
 
 ```http
-GET {{baseUrl}}/api/v1/languages
+GET {{baseUrl}}/api/v1/profile/languages
 ```
 
 Purpose:
@@ -940,7 +940,7 @@ Expected response:
 ### 9.10 Submit KYC document photo
 
 ```http
-POST {{baseUrl}}/api/v1/kyc
+POST {{baseUrl}}/api/v1/profile/kyc
 ```
 
 Request content type:
@@ -995,7 +995,7 @@ The raw document number and stored hash are never returned.
 ### 9.11 Get KYC status
 
 ```http
-GET {{baseUrl}}/api/v1/kyc
+GET {{baseUrl}}/api/v1/profile/kyc
 ```
 
 Purpose:
@@ -1027,7 +1027,7 @@ rejected
 ### 9.12 List interests
 
 ```http
-GET {{baseUrl}}/api/v1/interests
+GET {{baseUrl}}/api/v1/profile/interests
 ```
 
 Purpose:
@@ -1093,7 +1093,7 @@ Expected response:
 ### 9.14 Save dating preferences
 
 ```http
-PATCH {{baseUrl}}/api/v1/dating-preferences
+PATCH {{baseUrl}}/api/v1/profile/dating-preferences
 ```
 
 Request body:
@@ -1142,7 +1142,7 @@ Expected response:
 ### 9.15 Complete onboarding
 
 ```http
-POST {{baseUrl}}/api/v1/onboarding/complete
+POST {{baseUrl}}/api/v1/profile/onboarding/complete
 ```
 
 Request body:
@@ -1221,18 +1221,18 @@ Recommended Postman request order:
 2. `POST {{baseUrl}}/api/v1/auth/send-otp`
 3. `POST {{baseUrl}}/api/v1/auth/verify-otp`
 4. Save the access token from the verify response
-5. `GET {{baseUrl}}/api/v1/onboarding/status`
-6. `PATCH {{baseUrl}}/api/v1/profile`
+5. `GET {{baseUrl}}/api/v1/profile/onboarding/status`
+6. `PATCH {{baseUrl}}/api/v1/profile/update-profile`
 7. `GET {{baseUrl}}/api/v1/profile/me`
-8. `GET {{baseUrl}}/api/v1/languages`
+8. `GET {{baseUrl}}/api/v1/profile/languages`
 9. `PATCH {{baseUrl}}/api/v1/profile/languages`
 10. `PATCH {{baseUrl}}/api/v1/profile/education`
-11. `POST {{baseUrl}}/api/v1/kyc`
-12. `GET {{baseUrl}}/api/v1/kyc`
-13. `GET {{baseUrl}}/api/v1/interests`
+11. `POST {{baseUrl}}/api/v1/profile/kyc`
+12. `GET {{baseUrl}}/api/v1/profile/kyc`
+13. `GET {{baseUrl}}/api/v1/profile/interests`
 14. `PUT {{baseUrl}}/api/v1/profile/interests`
-15. `PATCH {{baseUrl}}/api/v1/dating-preferences`
-16. `POST {{baseUrl}}/api/v1/onboarding/complete`
+15. `PATCH {{baseUrl}}/api/v1/profile/dating-preferences`
+16. `POST {{baseUrl}}/api/v1/profile/onboarding/complete`
 
 ## 11. Error Testing in Postman
 

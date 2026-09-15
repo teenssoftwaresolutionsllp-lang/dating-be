@@ -335,12 +335,14 @@ class ProfileRepository {
 
   async upsertEducation(
     userId: string,
-    values: Omit<NewEducation, "id" | "userId" | "createdAt" | "updatedAt">,
+    values: Partial<
+      Omit<NewEducation, "id" | "userId" | "createdAt" | "updatedAt">
+    >,
   ): Promise<Education> {
     return db.transaction(async (transaction) => {
       const now = new Date();
       const [existingEducation] = await transaction
-        .select({ id: education.id })
+        .select()
         .from(education)
         .where(eq(education.userId, userId))
         .limit(1);
@@ -353,9 +355,23 @@ class ProfileRepository {
           .where(eq(education.id, existingEducation.id))
           .returning();
       } else {
+        const educationLevel = values.educationLevel;
+        if (!educationLevel) {
+          throw new Error(
+            "educationLevel is required for the first education update",
+          );
+        }
+
+        const insertValues: NewEducation = {
+          userId,
+          educationLevel,
+          ...values,
+          updatedAt: now,
+        };
+
         [educationRecord] = await transaction
           .insert(education)
-          .values({ userId, ...values, updatedAt: now })
+          .values(insertValues)
           .returning();
       }
 
@@ -375,6 +391,16 @@ class ProfileRepository {
       .where(eq(profiles.userId, userId));
 
     return profile;
+  }
+
+  async findEducationByUserId(userId: string): Promise<Education | undefined> {
+    const [educationRecord] = await db
+      .select()
+      .from(education)
+      .where(eq(education.userId, userId))
+      .limit(1);
+
+    return educationRecord;
   }
 
   async findOnboardingStatus(userId: string): Promise<

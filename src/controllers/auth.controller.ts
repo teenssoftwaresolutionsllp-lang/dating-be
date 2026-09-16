@@ -87,30 +87,23 @@ export class AuthController {
     });
   }
 
-  /**
-   * POST /api/v1/auth/verify-otp
-   * Screen 3: Verify 4-digit OTP and login or auto-register user
-   */
-  static async verifyOtp(req: Request, res: Response): Promise<Response> {
-    const { phone, countryCode, otp, preferredLanguage } = req.body;
-    const userAgent = req.headers["user-agent"] as string | undefined;
-    const ipAddress = req.ip || (req.socket?.remoteAddress as string | undefined);
-
-    const result = await AuthService.verifyOtp({
-      phone,
-      countryCode,
-      otp,
-      preferredLanguage,
-      userAgent,
-      ipAddress,
+  static async socialAuth(req: Request, res: Response): Promise<Response> {
+    const result = await AuthService.socialAuth({
+      provider: req.body.provider,
+      providerUserId: req.body.providerUserId,
+      providerEmail: req.body.providerEmail,
+      userAgent: req.headers["user-agent"] as string | undefined,
+      ipAddress: req.ip || req.socket?.remoteAddress,
     });
+    const { refreshToken, ...publicTokens } = result.tokens;
+    setRefreshTokenCookie(res, refreshToken);
 
     return ApiResponse.success(res, {
       statusCode: 200,
       message: result.isNewUser
-        ? "Account created and verified successfully"
-        : "OTP verified and logged in successfully",
-      data: result,
+        ? "Social account created successfully"
+        : "Social login successful",
+      data: { ...result, tokens: publicTokens },
     });
   }
 

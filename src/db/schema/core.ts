@@ -30,7 +30,7 @@ export const users = pgTable(
   "users",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    email: varchar("email", { length: 255 }).notNull().unique(),
+    email: varchar("email", { length: 255 }).unique(),
     phone: varchar("phone", { length: 20 }),
     passwordHash: text("password_hash"),
     authProvider: varchar("auth_provider", { length: 30 })

@@ -3,27 +3,113 @@ import ProfileController from "../controllers/profile.controller";
 import { authenticate } from "../middleware/auth.middleware";
 import { asyncHandler } from "../middleware/error.middleware";
 
+import {
+  handlePhotoUploadError,
+  uploadProfilePhoto,
+} from "../middleware/photo-upload.middleware";
+import { validateBody } from "../middleware/validation.middleware";
+import {
+  profileUpdateSchema,
+  educationSchema,
+  datingPreferencesSchema,
+  interestSelectionSchema,
+  kycSchema,
+  languageSelectionSchema,
+} from "../validation";
+
 const router = Router();
 
-// =================================================================
-// Own Profile (Authenticated)
-// =================================================================
-// GET /api/v1/profile/me — Get own profile
-router.get("/me", authenticate, asyncHandler(ProfileController.getMyProfile));
+// Return the saved onboarding step so the client can resume onboarding.
+router.get(
+  "/onboarding/status",
+  authenticate,
+  asyncHandler(ProfileController.getOnboardingStatus),
+);
 
-// PATCH /api/v1/profile/me — Update own profile
-router.patch("/me", authenticate, asyncHandler(ProfileController.updateProfile));
+// Return the authenticated user's saved profile for pre-filling forms.
+router.get("/me", authenticate, asyncHandler(ProfileController.getProfile));
 
-// POST /api/v1/profile/me/photos — Add a photo to own profile
-router.post("/me/photos", authenticate, asyncHandler(ProfileController.addPhoto));
+// Create or update core profile fields such as name, birthday, gender, and height.
+router.patch(
+  "/update-profile",
+  authenticate,
+  validateBody(profileUpdateSchema),
+  asyncHandler(ProfileController.updateProfile),
+);
 
-// DELETE /api/v1/profile/me/photos — Remove a photo from own profile
-router.delete("/me/photos", authenticate, asyncHandler(ProfileController.deletePhoto));
+// Return predefined reference data for onboarding selection controls.
+router.get("/languages", asyncHandler(ProfileController.getLanguages));
+router.get("/interests", asyncHandler(ProfileController.getInterests));
 
-// =================================================================
-// Public Profile (View another user)
-// =================================================================
-// GET /api/v1/profile/:userId — Get another user's public profile
-router.get("/:userId", authenticate, asyncHandler(ProfileController.getUserProfile));
+// Replace the authenticated user's complete language selection.
+router.patch(
+  "/languages",
+  authenticate,
+  validateBody(languageSelectionSchema),
+  asyncHandler(ProfileController.updateLanguages),
+);
+
+// Replace the authenticated user's complete interest selection.
+router.put(
+  "/interests",
+  authenticate,
+  validateBody(interestSelectionSchema),
+  asyncHandler(ProfileController.updateInterests),
+);
+
+// Create or update the authenticated user's education record.and designation.salary
+router.patch(
+  "/education",
+  authenticate,
+  validateBody(educationSchema),
+  asyncHandler(ProfileController.updateEducation),
+);
+
+// Submit KYC data; the service stores only a hash of the document number.
+router.post(
+  "/kyc",
+  authenticate,
+  uploadProfilePhoto.single("documentPhoto"),
+  handlePhotoUploadError,
+  validateBody(kycSchema),
+  asyncHandler(ProfileController.submitKyc),
+);
+
+// Return the authenticated user's safe KYC status without sensitive data.
+router.get("/kyc", authenticate, asyncHandler(ProfileController.getKyc));
+
+// Upload a profile image to Cloudinary and save its metadata in PostgreSQL.
+router.post(
+  "/photos",
+  authenticate,
+  uploadProfilePhoto.array("photo", 10),
+  handlePhotoUploadError,
+  asyncHandler(ProfileController.uploadPhoto),
+);
+
+// Return the authenticated user's uploaded photo metadata and URLs.
+router.get("/photos", authenticate, asyncHandler(ProfileController.getPhotos));
+
+// Delete a photo only when it belongs to the authenticated user.
+router.delete(
+  "/photos/:photoId",
+  authenticate,
+  asyncHandler(ProfileController.deletePhoto),
+);
+
+// Create or update the authenticated user's dating preferences.
+router.patch(
+  "/dating-preferences",
+  authenticate,
+  validateBody(datingPreferencesSchema),
+  asyncHandler(ProfileController.updateDatingPreferences),
+);
+
+// Validate all required database records before marking onboarding complete.
+router.post(
+  "/onboarding/complete",
+  authenticate,
+  asyncHandler(ProfileController.completeOnboarding),
+);
 
 export default router;

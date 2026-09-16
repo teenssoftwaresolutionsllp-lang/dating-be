@@ -65,7 +65,86 @@ export class AuthController {
       data: result,
     });
   }
-  static async getProfile(req: Request, res: Response): Promise<Response> {
+
+  /**
+   * POST /api/v1/auth/resend-otp
+   * Screen 2 (OTP Screen): Resend a fresh 4-digit OTP after the 30-second cooldown has elapsed
+   * or when the previous OTP has expired (10-minute window).
+   */
+  static async resendOtp(req: Request, res: Response): Promise<Response> {
+    const { phone, countryCode, preferredLanguage } = req.body;
+
+    const result = await AuthService.resendOtp({
+      phone,
+      countryCode,
+      preferredLanguage,
+    });
+
+    return ApiResponse.success(res, {
+      statusCode: 200,
+      message: `OTP resent successfully to ${result.countryCode} ${result.phone}`,
+      data: result,
+    });
+  }
+
+  /**
+   * POST /api/v1/auth/verify-otp
+   * Screen 3: Verify 4-digit OTP and login or auto-register user
+   */
+  static async verifyOtp(req: Request, res: Response): Promise<Response> {
+    const { phone, countryCode, otp, preferredLanguage } = req.body;
+    const userAgent = req.headers["user-agent"] as string | undefined;
+    const ipAddress = req.ip || (req.socket?.remoteAddress as string | undefined);
+
+    const result = await AuthService.verifyOtp({
+      phone,
+      countryCode,
+      otp,
+      preferredLanguage,
+      userAgent,
+      ipAddress,
+    });
+
+    return ApiResponse.success(res, {
+      statusCode: 200,
+      message: result.isNewUser
+        ? "Account created and verified successfully"
+        : "OTP verified and logged in successfully",
+      data: result,
+    });
+  }
+
+  /**
+   * POST /api/v1/auth/language
+   * Set preferred display language for authenticated user
+   */
+  static async setLanguage(req: Request, res: Response): Promise<Response> {
+    const { language } = req.body;
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return ApiResponse.error(res, {
+        statusCode: 401,
+        message: "Unauthorized: User not authenticated",
+        code: "UNAUTHORIZED",
+      });
+    }
+
+    const result = await AuthService.setUserLanguage({ userId, language });
+
+    return ApiResponse.success(res, {
+      statusCode: 200,
+      message: "Display language updated successfully",
+      data: result,
+    });
+  }
+
+  /**
+   * GET /api/v1/auth/me
+   * Get current authenticated user details
+   */
+
+  static async getMe(req: Request, res: Response): Promise<Response> {
     const userId = req.user?.id;
 
     if (!userId) {

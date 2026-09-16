@@ -14,6 +14,8 @@ import type {
   AuthResult,
   LogoutParams,
   RefreshTokenParams,
+  ResendOtpParams,
+  ResendOtpResult,
   SendOtpParams,
   SendOtpResult,
   SupportedLanguage,
@@ -39,6 +41,21 @@ export class AuthService {
     return SUPPORTED_LANGUAGES;
   }
 
+/**
+   * Normalise a phone number to its 10-digit local form.
+   * Strips non-digit characters, then removes a leading country code
+   * (handles +91 / 91 prefix for Indian numbers).
+   */
+  private static normalisePhone(phone: string, countryCode: string = "+91"): string {
+    let digits = phone.replace(/[^0-9]/g, "");
+    // Strip country code prefix (e.g. 91 from +91)
+    const ccDigits = countryCode.replace(/[^0-9]/g, "");
+    if (ccDigits && digits.startsWith(ccDigits) && digits.length > 10) {
+      digits = digits.slice(ccDigits.length);
+    }
+    return digits;
+  }
+
   /**
    * Screen 2: Send 4-digit Mobile OTP
    */
@@ -46,6 +63,8 @@ export class AuthService {
     phone,
     countryCode = "+91",
   }: SendOtpParams): Promise<SendOtpResult> {
+    const localPhone = AuthService.normalisePhone(phone, countryCode);
+    const fullPhone = `${countryCode}${localPhone}`;
     const now = new Date();
 
     // Check for existing active OTP with cooldown (30s)
@@ -75,10 +94,7 @@ export class AuthService {
     const otpCode = generateOTP(OTP_CONFIG.LENGTH);
 
     const expiresAt = new Date(
-      now.getTime() + OTP_CONFIG.EXPIRY_MINUTES * 60 * 1000,
-    );
-    const resendCooldownUntil = new Date(
-      now.getTime() + OTP_CONFIG.RESEND_COOLDOWN_SECONDS * 1000,
+      now.getTime() + OTP_CONFIG.EXPIRY_MINUTES * 60 * 10000
     );
 
     // Save OTP to database
@@ -120,6 +136,8 @@ export class AuthService {
     userAgent = null,
     ipAddress = null,
   }: VerifyOtpParams): Promise<AuthResult> {
+    const localPhone = AuthService.normalisePhone(phone, countryCode);
+    const fullPhone = `${countryCode}${localPhone}`;
     const now = new Date();
 
     const otpRecord = await AuthRepository.findLatestActiveOtp(
@@ -206,15 +224,175 @@ export class AuthService {
     }
 
     // Generate JWT access and refresh tokens
-    const sessionId = randomUUID();
-    const tokens = generateTokens(
-      {
-        id: user.id,
-        phone: user.phone,
-        role: user.role,
-      },
-      sessionId,
+    const tokens = generateTokens(safeUser);
+    const refreshTokenHash = hashToken(tokens.refreshToken);
+    const sessionExpiry = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    await db.insert(userSessions).values({
+      userId: user.id,
+      refreshTokenHash,
+      userAgent,
+      ipAddress,
+      expiresAt: sessionExpiry,
+    });
+
+    return {
+      isNewUser,
+      user: safeUser,
+      tokens,
+    };
+  }
+
+  /**
+   * POST /api/v1/auth/resend-otp
+   * Resend a fresh 4-digit OTP respecting the 30-second cooldown window.
+   *
+   * Rules:
+   *  - If the most recent un-verified OTP was sent less than 30 s ago, reject with 429.
+   *  - Otherwise (expired window or cooldown elapsed), generate a new OTP,
+   *    persist it, and dispatch via SMS.
+   */
+  static async resendOtp({
+    phone,
+    countryCode = "+91",
+  }: ResendOtpParams): Promise<ResendOtpResult> {
+    const localPhone = AuthService.normalisePhone(phone, countryCode);
+    const fullPhone = `${countryCode}${localPhone}`;
+    const now = new Date();
+
+    // Fetch the most recent un-verified OTP for this number
+    const [latestOtpRecord] = await db
+      .select()
+      .from(otpVerifications)
+      .where(
+        and(
+          eq(otpVerifications.identifier, fullPhone),
+          eq(otpVerifications.purpose, OTP_PURPOSES.LOGIN),
+          isNull(otpVerifications.verifiedAt)
+        )
+      )
+      .orderBy(desc(otpVerifications.createdAt))
+      .limit(1);
+
+    if (latestOtpRecord) {
+      const createdAtTime = new Date(latestOtpRecord.createdAt).getTime();
+      const elapsed = now.getTime() - createdAtTime;
+      const cooldownMs = OTP_CONFIG.RESEND_COOLDOWN_SECONDS * 1000;
+
+      // Enforce 30-second cooldown
+      if (elapsed < cooldownMs) {
+        const remainingSeconds = Math.ceil((cooldownMs - elapsed) / 1000);
+        const error = new Error(
+          `Please wait ${remainingSeconds} second(s) before requesting a new OTP.`
+        ) as AppError;
+        error.statusCode = 429;
+        error.code = "OTP_COOLDOWN_ACTIVE";
+        error.remainingSeconds = remainingSeconds;
+        throw error;
+      }
+    }
+
+    // Generate a fresh 4-digit OTP
+    const otpCode = generateOTP(OTP_CONFIG.LENGTH);
+    const codeHash = hashToken(otpCode);
+    const expiresAt = new Date(
+      now.getTime() + OTP_CONFIG.EXPIRY_MINUTES * 60 * 1000
     );
+
+    // Persist new OTP record
+    await db.insert(otpVerifications).values({
+      identifier: fullPhone,
+      purpose: OTP_PURPOSES.LOGIN,
+      codeHash,
+      attempts: 0,
+      expiresAt,
+    });
+
+    // Dispatch SMS
+    await sendSmsOTP({ phone: fullPhone, countryCode, otp: otpCode });
+
+    const responseData: ResendOtpResult = {
+      phone: fullPhone,
+      countryCode,
+      purpose: OTP_PURPOSES.LOGIN,
+      expiresIn: OTP_CONFIG.EXPIRY_MINUTES * 60,
+      resendCooldown: OTP_CONFIG.RESEND_COOLDOWN_SECONDS,
+    };
+
+    // Expose the OTP in non-production environments for easy testing
+    if (process.env.NODE_ENV !== "production") {
+      responseData.devOtp = otpCode;
+    }
+
+    return responseData;
+  }
+
+  /**
+   * Screen 2: Social Login (Google, Apple)
+   */
+  static async socialAuth({
+    provider,
+    providerUserId,
+    providerEmail,
+    userAgent = null,
+    ipAddress = null,
+  }: SocialAuthParams): Promise<AuthResult> {
+    const email = providerEmail || `${provider}_${providerUserId}@oauth.auth`;
+    const now = new Date();
+
+    const [existingUser] = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, email));
+
+    let user: User;
+    let isNewUser = false;
+
+    if (!existingUser) {
+      isNewUser = true;
+      const [newUser] = await db
+        .insert(users)
+        .values({
+          email,
+          authProvider: provider,
+          role: "user",
+          status: "active",
+          emailVerified: true,
+          phoneVerified: false,
+          lastLoginAt: now,
+          lastActiveAt: now,
+        })
+        .returning();
+
+      user = newUser;
+    } else {
+      const [updatedUser] = await db
+        .update(users)
+        .set({
+          lastLoginAt: now,
+          lastActiveAt: now,
+          updatedAt: now,
+        })
+        .where(eq(users.id, existingUser.id))
+        .returning();
+
+      user = updatedUser;
+    }
+
+    const safeUser: SafeUser = {
+      id: user.id,
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+      status: user.status,
+      emailVerified: user.emailVerified,
+      phoneVerified: user.phoneVerified,
+      authProvider: user.authProvider,
+      lastLoginAt: user.lastLoginAt,
+      lastActiveAt: user.lastActiveAt,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
 
     // Create session in user_sessions
     const sessionExpiry = new Date(

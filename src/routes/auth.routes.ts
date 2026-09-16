@@ -1,78 +1,41 @@
 import { Router } from "express";
 import AuthController from "../controllers/auth.controller";
-import {
-  validateSendOtp,
-  validateVerifyOtp,
-  validateSetLanguage,
-  validateRefreshToken,
-  validateSocialAuth,
-} from "../middleware/validation.middleware";
-import { authenticate, optionalAuth } from "../middleware/auth.middleware";
+
 import { asyncHandler } from "../middleware/error.middleware";
+import { authenticate } from "../middleware/auth.middleware";
+import { validateBody } from "../middleware/validation.middleware";
+import { sendOtpSchema, verifyOtpSchema } from "../validation/auth.validation";
 
 const router = Router();
 
-// =================================================================
-// Screen 1: Language Selection APIs
-// =================================================================
-// Get supported languages (English, Telugu, etc.)
-router.get("/languages", asyncHandler(AuthController.getLanguages));
-
-// Set/Update user display language (Authenticated)
+// Start phone authentication by sending an OTP to the user's phone.
 router.post(
-  "/language",
-  authenticate,
-  validateSetLanguage,
-  asyncHandler(AuthController.setLanguage)
+  "/send-otp",
+  validateBody(sendOtpSchema),
+  asyncHandler(AuthController.sendOtp),
 );
 
-// =================================================================
-// Screen 2: Mobile Login & Social Logins APIs
-// =================================================================
-// Send 4-digit OTP to mobile number
-router.post("/send-otp", validateSendOtp, asyncHandler(AuthController.sendOtp));
-
-// Optional Social Login buttons on Screen 2
-router.post(
-  "/google",
-  validateSocialAuth("google"),
-  asyncHandler(AuthController.googleAuth)
-);
-router.post(
-  "/facebook",
-  validateSocialAuth("facebook"),
-  asyncHandler(AuthController.facebookAuth)
-);
-router.post(
-  "/instagram",
-  validateSocialAuth("instagram"),
-  asyncHandler(AuthController.instagramAuth)
-);
-
-// =================================================================
-// Screen 3: OTP Verification API
-// =================================================================
-// Verify 4-digit OTP, auto-create/login user, return JWT tokens
+// Verify the OTP, create/login the user, and issue access credentials.
 router.post(
   "/verify-otp",
-  validateVerifyOtp,
-  asyncHandler(AuthController.verifyOtp)
+  validateBody(verifyOtpSchema),
+  asyncHandler(AuthController.verifyOtp),
 );
 
-// =================================================================
-// Session & Profile APIs
-// =================================================================
-// Get current authenticated user profile
-router.get("/me", authenticate, asyncHandler(AuthController.getMe));
+// Create a new access token using the refresh-token cookie.
+router.post("/refresh-token", asyncHandler(AuthController.refresh));
 
-// Refresh expired access token
+// Revoke the current session and clear the refresh-token cookie.
+router.post("/logout", asyncHandler(AuthController.logout));
+
+// Revoke all active sessions for the authenticated user.
 router.post(
-  "/refresh-token",
-  validateRefreshToken,
-  asyncHandler(AuthController.refreshToken)
+  "/logout-all",
+  authenticate,
+  asyncHandler(AuthController.logoutAll),
 );
 
-// Logout & invalidate session
-router.post("/logout", optionalAuth, asyncHandler(AuthController.logout));
+// Return basic account information for the authenticated user.
+router.get("/profile", authenticate, asyncHandler(AuthController.getProfile));
 
 export default router;

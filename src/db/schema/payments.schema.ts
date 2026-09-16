@@ -20,6 +20,7 @@ export const payments = pgTable(
       .notNull()
       .references(() => subscriptions.id),
     provider: varchar("provider", { length: 30 }).notNull(),
+    providerOrderId: varchar("provider_order_id", { length: 150 }),
     providerPaymentId: varchar("provider_payment_id", { length: 100 })
       .notNull()
       .unique(),
@@ -27,6 +28,9 @@ export const payments = pgTable(
     currency: varchar("currency", { length: 3 }).notNull().default("INR"),
     status: varchar("status", { length: 20 }).notNull().default("pending"),
     createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
   },

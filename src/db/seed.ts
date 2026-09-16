@@ -264,7 +264,7 @@ async function seed() {
             emailVerified: true,
             phoneVerified: true,
           },
-        ])
+        ] as any)
         .onConflictDoNothing()
         .returning();
 
@@ -278,24 +278,24 @@ async function seed() {
       await db
         .insert(userSettings)
         .values({
-          userId: u.id,
+          userId: u.user_id,
           profileVisibility: true,
           showVerifiedOnly: false,
           locationVisibility: "approximate",
           onlineStatusVisibility: true,
-        })
+        } as any)
         .onConflictDoNothing();
 
       await db
         .insert(notificationSettings)
         .values({
-          userId: u.id,
+          userId: u.user_id,
           newMatches: true,
           newMessages: true,
           newLikes: true,
           pushEnabled: true,
           emailEnabled: true,
-        })
+        } as any)
         .onConflictDoNothing();
     }
 
@@ -306,7 +306,7 @@ async function seed() {
       [profileAarav] = await db
         .insert(profiles)
         .values({
-          userId: userAarav.id,
+          userId: userAarav.user_id,
           name: "Aarav Sharma",
           dateOfBirth: "1997-04-15",
           gender: "male",
@@ -318,7 +318,7 @@ async function seed() {
           country: "India",
           latitude: 12.9716,
           longitude: 77.5946,
-        })
+        } as any)
         .onConflictDoNothing()
         .returning();
     }
@@ -327,7 +327,7 @@ async function seed() {
       [profileAnanya] = await db
         .insert(profiles)
         .values({
-          userId: userAnanya.id,
+          userId: userAnanya.user_id,
           name: "Ananya Verma",
           dateOfBirth: "1998-08-22",
           gender: "female",
@@ -339,7 +339,7 @@ async function seed() {
           country: "India",
           latitude: 12.9784,
           longitude: 77.6408,
-        })
+        } as any)
         .onConflictDoNothing()
         .returning();
     }
@@ -348,7 +348,7 @@ async function seed() {
       [profileRohan] = await db
         .insert(profiles)
         .values({
-          userId: userRohan.id,
+          userId: userRohan.user_id,
           name: "Rohan Mehta",
           dateOfBirth: "1995-11-03",
           gender: "male",
@@ -360,7 +360,7 @@ async function seed() {
           country: "India",
           latitude: 19.076,
           longitude: 72.8777,
-        })
+        } as any)
         .onConflictDoNothing()
         .returning();
     }
@@ -369,7 +369,7 @@ async function seed() {
       [profilePriya] = await db
         .insert(profiles)
         .values({
-          userId: userPriya.id,
+          userId: userPriya.user_id,
           name: "Priya Nair",
           dateOfBirth: "1999-01-19",
           gender: "female",
@@ -381,7 +381,7 @@ async function seed() {
           country: "India",
           latitude: 12.9352,
           longitude: 77.6245,
-        })
+        } as any)
         .onConflictDoNothing()
         .returning();
     }
@@ -399,7 +399,7 @@ async function seed() {
         .values([
           { profileId: profileAarav.id, languageId: insertedLanguages[0].id },
           { profileId: profileAarav.id, languageId: insertedLanguages[1].id },
-        ])
+        ] as any)
         .onConflictDoNothing();
 
       await db
@@ -407,7 +407,7 @@ async function seed() {
         .values([
           { profileId: profileAarav.id, interestId: insertedInterests[1].id }, // Hiking
           { profileId: profileAarav.id, interestId: insertedInterests[7].id }, // Tech
-        ])
+        ] as any)
         .onConflictDoNothing();
     }
 
@@ -417,7 +417,7 @@ async function seed() {
         .values([
           { profileId: profileAnanya.id, languageId: insertedLanguages[0].id },
           { profileId: profileAnanya.id, languageId: insertedLanguages[1].id },
-        ])
+        ] as any)
         .onConflictDoNothing();
 
       await db
@@ -426,7 +426,7 @@ async function seed() {
           { profileId: profileAnanya.id, interestId: insertedInterests[0].id }, // Photography
           { profileId: profileAnanya.id, interestId: insertedInterests[2].id }, // Coffee
           { profileId: profileAnanya.id, interestId: insertedInterests[4].id }, // Music
-        ])
+        ] as any)
         .onConflictDoNothing();
     }
 
@@ -439,7 +439,7 @@ async function seed() {
       await db
         .insert(education)
         .values({
-          userId: userAarav.id,
+          userId: userAarav.user_id,
           educationLevel: "bachelors",
           qualification: "B.Tech Computer Science",
           institutionName: "NIT Surathkal",
@@ -448,27 +448,27 @@ async function seed() {
           companyName: "Fintech Labs",
           incomeRange: "₹25L - ₹50L",
           isPrimary: true,
-        })
+        } as any)
         .onConflictDoNothing();
 
       await db
         .insert(datingPreferences)
         .values({
-          userId: userAarav.id,
+          userId: userAarav.user_id,
           minAge: 23,
           maxAge: 32,
           maxDistanceKm: 30,
           preferredGenders: ["female"],
           relationshipIntentions: ["long_term", "marriage"],
           verifiedOnly: false,
-        })
+        } as any)
         .onConflictDoNothing();
 
       await db
         .insert(profilePhotos)
         .values([
           {
-            userId: userAarav.id,
+            userId: userAarav.user_id,
             storageKey: "profiles/aarav_primary.jpg",
             url: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800",
             displayOrder: 0,
@@ -480,7 +480,7 @@ async function seed() {
             width: 1080,
             height: 1350,
           },
-        ])
+        ] as any)
         .onConflictDoNothing();
     }
 
@@ -488,21 +488,21 @@ async function seed() {
       await db
         .insert(datingPreferences)
         .values({
-          userId: userAnanya.id,
+          userId: userAnanya.user_id,
           minAge: 25,
           maxAge: 34,
           maxDistanceKm: 25,
           preferredGenders: ["male"],
           relationshipIntentions: ["long_term"],
           verifiedOnly: true,
-        })
+        } as any)
         .onConflictDoNothing();
 
       await db
         .insert(profilePhotos)
         .values([
           {
-            userId: userAnanya.id,
+            userId: userAnanya.user_id,
             storageKey: "profiles/ananya_primary.jpg",
             url: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=800",
             displayOrder: 0,
@@ -514,22 +514,22 @@ async function seed() {
             width: 1080,
             height: 1350,
           },
-        ])
+        ] as any)
         .onConflictDoNothing();
 
       // KYC Record
       await db
         .insert(kycVerifications)
         .values({
-          userId: userAnanya.id,
+          userId: userAnanya.user_id,
           documentType: "passport",
           documentNumberHash: "sha256_mock_hash_ananya_doc",
           status: "verified",
           provider: "hyperverge",
           providerReference: "KYC-REF-ANANYA-2026",
           verifiedAt: new Date(),
-          reviewedBy: modUser ? modUser.id : null,
-        })
+          reviewedBy: modUser ? modUser.user_id : null,
+        } as any)
         .onConflictDoNothing();
     }
 
@@ -544,43 +544,43 @@ async function seed() {
         .insert(swipes)
         .values([
           {
-            userId: userAarav.id,
-            targetUserId: userAnanya.id,
+            userId: userAarav.user_id,
+            targetUserId: userAnanya.user_id,
             action: "like",
             source: "discovery",
           },
           {
-            userId: userAnanya.id,
-            targetUserId: userAarav.id,
+            userId: userAnanya.user_id,
+            targetUserId: userAarav.user_id,
             action: "like",
             source: "discovery",
           },
-        ])
+        ] as any)
         .onConflictDoNothing();
 
       await db
         .insert(swipeEvents)
         .values([
           {
-            userId: userAarav.id,
-            targetUserId: userAnanya.id,
+            userId: userAarav.user_id,
+            targetUserId: userAnanya.user_id,
             action: "like",
             source: "discovery",
           },
           {
-            userId: userAnanya.id,
-            targetUserId: userAarav.id,
+            userId: userAnanya.user_id,
+            targetUserId: userAarav.user_id,
             action: "like",
             source: "discovery",
           },
-        ])
+        ] as any)
         .onConflictDoNothing();
 
       // Canonical match ordering (user1_id < user2_id)
       const [u1, u2] =
-        userAarav.id < userAnanya.id
-          ? [userAarav.id, userAnanya.id]
-          : [userAnanya.id, userAarav.id];
+        userAarav.user_id < userAnanya.user_id
+          ? [userAarav.user_id, userAnanya.user_id]
+          : [userAnanya.user_id, userAarav.user_id];
 
       const [sampleMatch] = await db
         .insert(matches)
@@ -589,7 +589,7 @@ async function seed() {
           user2Id: u2,
           status: "active",
           lastActivityAt: new Date(),
-        })
+        } as any)
         .onConflictDoNothing()
         .returning();
 
@@ -598,7 +598,7 @@ async function seed() {
           .insert(conversations)
           .values({
             matchId: sampleMatch.id,
-          })
+          } as any)
           .onConflictDoNothing()
           .returning();
 
@@ -606,20 +606,20 @@ async function seed() {
           await db
             .insert(conversationMembers)
             .values([
-              { conversationId: chatConv.id, userId: userAarav.id },
-              { conversationId: chatConv.id, userId: userAnanya.id },
-            ])
+              { conversationId: chatConv.id, userId: userAarav.user_id },
+              { conversationId: chatConv.id, userId: userAnanya.user_id },
+            ] as any)
             .onConflictDoNothing();
 
           const [msg1] = await db
             .insert(messages)
             .values({
               conversationId: chatConv.id,
-              senderId: userAarav.id,
+              senderId: userAarav.user_id,
               messageType: "text",
               content:
                 "Hey Ananya! Loved your photography shots. Where was that sunset photo taken?",
-            })
+            } as any)
             .onConflictDoNothing()
             .returning();
 
@@ -628,9 +628,9 @@ async function seed() {
               .insert(messageReads)
               .values({
                 messageId: msg1.id,
-                userId: userAnanya.id,
+                userId: userAnanya.user_id,
                 readAt: new Date(),
-              })
+              } as any)
               .onConflictDoNothing();
           }
 
@@ -638,11 +638,11 @@ async function seed() {
             .insert(messages)
             .values({
               conversationId: chatConv.id,
-              senderId: userAnanya.id,
+              senderId: userAnanya.user_id,
               messageType: "text",
               content:
                 "Hi Aarav! That was at Nandi Hills last weekend early morning 😊",
-            })
+            } as any)
             .onConflictDoNothing();
         }
       }
@@ -652,7 +652,7 @@ async function seed() {
         const [sub] = await db
           .insert(subscriptions)
           .values({
-            userId: userAarav.id,
+            userId: userAarav.user_id,
             planId: planGold.id,
             provider: "razorpay",
             providerSubscriptionId: "sub_mock_rzp_aarav_99",
@@ -660,7 +660,7 @@ async function seed() {
             autoRenew: true,
             startedAt: new Date(),
             expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-          })
+          } as any)
           .onConflictDoNothing()
           .returning();
 
@@ -668,7 +668,7 @@ async function seed() {
           await db
             .insert(payments)
             .values({
-              userId: userAarav.id,
+              userId: userAarav.user_id,
               subscriptionId: sub.id,
               provider: "razorpay",
               providerPaymentId: "pay_mock_rzp_tx_001",
@@ -676,7 +676,7 @@ async function seed() {
               amount: "499.00",
               currency: "INR",
               status: "success",
-            })
+            } as any)
             .onConflictDoNothing();
         }
       }

@@ -3,12 +3,19 @@ import ApiResponse from "../utils/response";
 import { SUPPORTED_LANGUAGES } from "../config/constants";
 
 /**
- * Validate phone number format (7 to 15 digits)
+ * Validate phone number is exactly 10 digits (after stripping country code if present).
+ * Accepts: 9876543210, +919876543210, 919876543210
  */
 const isValidPhone = (phone?: unknown): boolean => {
   if (!phone) return false;
-  const digitsOnly = phone.toString().replace(/[^0-9]/g, "");
-  return digitsOnly.length >= 7 && digitsOnly.length <= 15;
+  // Strip all non-digit characters
+  let digits = phone.toString().replace(/[^0-9]/g, "");
+  // If the number starts with the country code (91 for India) and is 12 digits, strip it
+  if (digits.length === 12 && digits.startsWith("91")) {
+    digits = digits.slice(2);
+  }
+  // Must be exactly 10 digits
+  return digits.length === 10;
 };
 
 /**
@@ -88,10 +95,11 @@ export const validateVerifyOtp = (
   }
 
   const cleanOtp = otp.toString().trim();
-  if (cleanOtp.length < 4 || cleanOtp.length > 6) {
+  // Strictly require exactly 4 numeric digits as shown in the UI (4 input boxes)
+  if (!/^\d{4}$/.test(cleanOtp)) {
     return ApiResponse.error(res, {
       statusCode: 400,
-      message: "Invalid OTP format (4 digits required)",
+      message: "Invalid OTP format. OTP must be exactly 4 digits.",
       code: "INVALID_OTP_FORMAT",
     });
   }
@@ -182,3 +190,9 @@ export const validateRefreshToken = (
 
   return next();
 };
+
+/**
+ * Resend OTP Validator — same rules as Send OTP
+ * Validates phone number format (10 digits) before allowing a resend request.
+ */
+export const validateResendOtp = validateSendOtp;

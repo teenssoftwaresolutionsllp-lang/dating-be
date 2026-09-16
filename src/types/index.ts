@@ -86,6 +86,23 @@ export interface SendOtpResult {
   devOtp?: string;
 }
 
+export interface ResendOtpParams {
+  phone: string;
+  countryCode?: string;
+  preferredLanguage?: string;
+}
+
+export interface ResendOtpResult {
+  phone: string;
+  countryCode: string;
+  purpose: string;
+  /** Seconds until the new OTP expires (e.g. 600 = 10 minutes) */
+  expiresIn: number;
+  /** Seconds the client must wait before it can request another resend */
+  resendCooldown: number;
+  devOtp?: string;
+}
+
 export interface VerifyOtpParams {
   phone: string;
   countryCode?: string;

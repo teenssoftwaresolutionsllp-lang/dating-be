@@ -40,6 +40,27 @@ export class AuthController {
   }
 
   /**
+   * POST /api/v1/auth/resend-otp
+   * Screen 2 (OTP Screen): Resend a fresh 4-digit OTP after the 30-second cooldown has elapsed
+   * or when the previous OTP has expired (10-minute window).
+   */
+  static async resendOtp(req: Request, res: Response): Promise<Response> {
+    const { phone, countryCode, preferredLanguage } = req.body;
+
+    const result = await AuthService.resendOtp({
+      phone,
+      countryCode,
+      preferredLanguage,
+    });
+
+    return ApiResponse.success(res, {
+      statusCode: 200,
+      message: `OTP resent successfully to ${result.countryCode} ${result.phone}`,
+      data: result,
+    });
+  }
+
+  /**
    * POST /api/v1/auth/verify-otp
    * Screen 3: Verify 4-digit OTP and login or auto-register user
    */

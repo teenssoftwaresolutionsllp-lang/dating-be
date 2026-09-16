@@ -1,7 +1,5 @@
-import { eq, and, desc, isNull } from "drizzle-orm";
-import crypto from "crypto";
-import { db } from "../db/index";
-import { users, otpVerifications, userSessions } from "../db/schema";
+import { createHash, randomUUID } from "node:crypto";
+
 import {
   SUPPORTED_LANGUAGES,
   OTP_CONFIG,
@@ -9,6 +7,8 @@ import {
 } from "../config/constants";
 import { generateOTP, sendSmsOTP } from "../utils/otp";
 import { generateTokens, verifyRefreshToken } from "../utils/jwt";
+import AuthRepository from "../repositories/auth.repository";
+
 import type {
   AppError,
   AuthResult,
@@ -18,8 +18,6 @@ import type {
   ResendOtpResult,
   SendOtpParams,
   SendOtpResult,
-  SetLanguageParams,
-  SocialAuthParams,
   SupportedLanguage,
   TokensResponse,
   VerifyOtpParams,
@@ -27,11 +25,15 @@ import type {
   User,
 } from "../types/index";
 
-// Helper to hash refresh tokens and OTPs for secure storage
-const hashToken = (token: string): string =>
-  crypto.createHash("sha256").update(token).digest("hex");
-
 export class AuthService {
+  static hashOtp(otp: string): string {
+    return createHash("sha256").update(otp).digest("hex");
+  }
+
+  static hashRefreshToken(refreshToken: string): string {
+    return createHash("sha256").update(refreshToken).digest("hex");
+  }
+
   /**
    * Screen 1: Get supported display languages
    */
@@ -65,31 +67,21 @@ export class AuthService {
     const fullPhone = `${countryCode}${localPhone}`;
     const now = new Date();
 
-    // Check for existing active OTP
-    const [latestOtpRecord] = await db
-      .select()
-      .from(otpVerifications)
-      .where(
-        and(
-          eq(otpVerifications.identifier, fullPhone),
-          eq(otpVerifications.purpose, OTP_PURPOSES.LOGIN),
-          isNull(otpVerifications.verifiedAt)
-        )
-      )
-      .orderBy(desc(otpVerifications.createdAt))
-      .limit(1);
+    // Check for existing active OTP with cooldown (30s)
+    const latestOtpRecord = await AuthRepository.findLatestActiveOtp(
+      phone,
+      OTP_PURPOSES.LOGIN,
+    );
 
     if (latestOtpRecord) {
-      const expiryTime = new Date(latestOtpRecord.expiresAt).getTime();
+      const cooldownTime =
+        new Date(latestOtpRecord.createdAt).getTime() +
+        OTP_CONFIG.RESEND_COOLDOWN_SECONDS * 1000;
       const currentTime = now.getTime();
-      // Enforce 30s cooldown if OTP was created within 30 seconds
-      const createdAtTime = new Date(latestOtpRecord.createdAt).getTime();
-      if (currentTime - createdAtTime < OTP_CONFIG.RESEND_COOLDOWN_SECONDS * 1000) {
-        const remainingSeconds = Math.ceil(
-          (OTP_CONFIG.RESEND_COOLDOWN_SECONDS * 1000 - (currentTime - createdAtTime)) / 1000
-        );
+      if (cooldownTime > currentTime) {
+        const remainingSeconds = Math.ceil((cooldownTime - currentTime) / 1000);
         const error = new Error(
-          `Please wait ${remainingSeconds} seconds before requesting a new OTP.`
+          `Please wait ${remainingSeconds} seconds before requesting a new OTP.`,
         ) as AppError;
         error.statusCode = 429;
         error.code = "OTP_COOLDOWN_ACTIVE";
@@ -100,31 +92,32 @@ export class AuthService {
 
     // Generate 4-digit OTP
     const otpCode = generateOTP(OTP_CONFIG.LENGTH);
-    const codeHash = hashToken(otpCode);
+
     const expiresAt = new Date(
       now.getTime() + OTP_CONFIG.EXPIRY_MINUTES * 60 * 10000
     );
 
     // Save OTP to database
-    await db.insert(otpVerifications).values({
-      identifier: fullPhone,
+    await AuthRepository.createOtp({
+      identifier: phone,
+      codeHash: AuthService.hashOtp(otpCode),
       purpose: OTP_PURPOSES.LOGIN,
-      codeHash,
       attempts: 0,
       expiresAt,
     });
 
     // Send SMS simulation/gateway
-    await sendSmsOTP({ phone: fullPhone, countryCode, otp: otpCode });
+    await sendSmsOTP({ phone, countryCode, otp: otpCode });
 
     const responseData: SendOtpResult = {
-      phone: fullPhone,
+      phone,
       countryCode,
       purpose: OTP_PURPOSES.LOGIN,
       expiresIn: OTP_CONFIG.EXPIRY_MINUTES * 60,
       resendCooldown: OTP_CONFIG.RESEND_COOLDOWN_SECONDS,
     };
 
+    // Return devOtp in non-production for testing convenience
     if (process.env.NODE_ENV !== "production") {
       responseData.devOtp = otpCode;
     }
@@ -147,22 +140,14 @@ export class AuthService {
     const fullPhone = `${countryCode}${localPhone}`;
     const now = new Date();
 
-    const [otpRecord] = await db
-      .select()
-      .from(otpVerifications)
-      .where(
-        and(
-          eq(otpVerifications.identifier, fullPhone),
-          eq(otpVerifications.purpose, OTP_PURPOSES.LOGIN),
-          isNull(otpVerifications.verifiedAt)
-        )
-      )
-      .orderBy(desc(otpVerifications.createdAt))
-      .limit(1);
+    const otpRecord = await AuthRepository.findLatestActiveOtp(
+      phone,
+      OTP_PURPOSES.LOGIN,
+    );
 
     if (!otpRecord) {
       const error = new Error(
-        "No active OTP found. Please request a new OTP."
+        "No active OTP found. Please request a new OTP.",
       ) as AppError;
       error.statusCode = 400;
       error.code = "OTP_NOT_FOUND";
@@ -170,7 +155,9 @@ export class AuthService {
     }
 
     if (new Date(otpRecord.expiresAt).getTime() < now.getTime()) {
-      const error = new Error("OTP has expired. Please request a new one.") as AppError;
+      const error = new Error(
+        "OTP has expired. Please request a new one.",
+      ) as AppError;
       error.statusCode = 400;
       error.code = "OTP_EXPIRED";
       throw error;
@@ -178,25 +165,25 @@ export class AuthService {
 
     if (otpRecord.attempts >= OTP_CONFIG.MAX_ATTEMPTS) {
       const error = new Error(
-        "Maximum OTP attempts exceeded. Please request a new OTP."
+        "Maximum OTP attempts exceeded. Please request a new OTP.",
       ) as AppError;
       error.statusCode = 400;
       error.code = "OTP_MAX_ATTEMPTS_EXCEEDED";
       throw error;
     }
 
-    const providedHash = hashToken(otp);
-    if (otpRecord.codeHash !== providedHash) {
-      await db
-        .update(otpVerifications)
-        .set({
-          attempts: otpRecord.attempts + 1,
-        })
-        .where(eq(otpVerifications.id, otpRecord.id));
+    if (otpRecord.codeHash !== AuthService.hashOtp(otp)) {
+      // Increment attempt counter
+      const updatedOtp = await AuthRepository.incrementOtpAttempts(
+        otpRecord.id,
+        OTP_CONFIG.MAX_ATTEMPTS,
+        now,
+      );
 
-      const remainingAttempts = OTP_CONFIG.MAX_ATTEMPTS - (otpRecord.attempts + 1);
+      const attemptsUsed = updatedOtp?.attempts ?? OTP_CONFIG.MAX_ATTEMPTS;
+      const remainingAttempts = OTP_CONFIG.MAX_ATTEMPTS - attemptsUsed;
       const error = new Error(
-        `Invalid OTP code. ${remainingAttempts > 0 ? `${remainingAttempts} attempt(s) remaining.` : "Please request a new OTP."}`
+        `Invalid OTP code. ${remainingAttempts > 0 ? `${remainingAttempts} attempt(s) remaining.` : "Please request a new OTP."}`,
       ) as AppError;
       error.statusCode = 400;
       error.code = "INVALID_OTP";
@@ -205,69 +192,36 @@ export class AuthService {
     }
 
     // Mark OTP as verified
-    await db
-      .update(otpVerifications)
-      .set({
-        verifiedAt: now,
-      })
-      .where(eq(otpVerifications.id, otpRecord.id));
+    await AuthRepository.markOtpVerified(otpRecord.id, now);
 
     // Check if user already exists
-    const [existingUser] = await db
-      .select()
-      .from(users)
-      .where(eq(users.phone, fullPhone));
+    const existingUser = await AuthRepository.findUserByPhone(phone);
 
     let user: User;
     let isNewUser = false;
 
     if (!existingUser) {
+      // Auto-register new user
       isNewUser = true;
-      const [createdUser] = await db
-        .insert(users)
-        .values({
-          email: `${fullPhone.replace(/[^0-9]/g, "")}@phone.auth`,
-          phone: fullPhone,
-          authProvider: "phone_otp",
-          role: "user",
-          status: "active",
-          emailVerified: false,
-          phoneVerified: true,
-          lastLoginAt: now,
-          lastActiveAt: now,
-        })
-        .returning();
-
-      user = createdUser;
+      user = await AuthRepository.createUser({
+        email: `${phone}@phone.local`,
+        phone,
+        phoneVerified: true,
+        status: "active",
+        authProvider: "phone",
+      });
     } else {
-      const [updatedUser] = await db
-        .update(users)
-        .set({
-          phoneVerified: true,
-          lastLoginAt: now,
-          lastActiveAt: now,
-          updatedAt: now,
-        })
-        .where(eq(users.id, existingUser.id))
-        .returning();
+      // Update existing user verification and display language
+      const updates = {
+        phoneVerified: true,
+        updatedAt: now,
+      };
 
-      user = updatedUser;
+      user = await AuthRepository.markUserPhoneVerified(
+        existingUser.id,
+        updates.updatedAt,
+      );
     }
-
-    const safeUser: SafeUser = {
-      id: user.id,
-      email: user.email,
-      phone: user.phone,
-      role: user.role,
-      status: user.status,
-      emailVerified: user.emailVerified,
-      phoneVerified: user.phoneVerified,
-      authProvider: user.authProvider,
-      lastLoginAt: user.lastLoginAt,
-      lastActiveAt: user.lastActiveAt,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-    };
 
     // Generate JWT access and refresh tokens
     const tokens = generateTokens(safeUser);
@@ -440,51 +394,34 @@ export class AuthService {
       updatedAt: user.updatedAt,
     };
 
-    const tokens = generateTokens(safeUser);
-    const refreshTokenHash = hashToken(tokens.refreshToken);
-    const sessionExpiry = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    // Create session in user_sessions
+    const sessionExpiry = new Date(
+      now.getTime() + 7 * 24 * 60 * 60 * 1000, // 7 days
+    );
 
-    await db.insert(userSessions).values({
+    await AuthRepository.createSession({
+      id: sessionId,
       userId: user.id,
-      refreshTokenHash,
-      userAgent,
+      refreshTokenHash: AuthService.hashRefreshToken(tokens.refreshToken),
+      deviceInfo: userAgent,
       ipAddress,
       expiresAt: sessionExpiry,
     });
 
     return {
       isNewUser,
-      provider,
-      user: safeUser,
+      user: {
+        id: user.id,
+        userId: user.id,
+        phone: user.phone,
+        countryCode,
+        preferredLanguage: preferredLanguage || "en",
+        role: user.role,
+        isVerified: user.phoneVerified,
+        profileCompleted: false,
+        createdAt: user.createdAt,
+      },
       tokens,
-    };
-  }
-
-  /**
-   * Update Display Language for user
-   */
-  static async setUserLanguage({
-    userId,
-    language,
-  }: SetLanguageParams): Promise<{ id: string; preferredLanguage: string }> {
-    const [updatedUser] = await db
-      .update(users)
-      .set({
-        updatedAt: new Date(),
-      })
-      .where(eq(users.id, userId))
-      .returning();
-
-    if (!updatedUser) {
-      const error = new Error("User not found") as AppError;
-      error.statusCode = 404;
-      error.code = "USER_NOT_FOUND";
-      throw error;
-    }
-
-    return {
-      id: updatedUser.id,
-      preferredLanguage: language,
     };
   }
 
@@ -492,23 +429,7 @@ export class AuthService {
    * Get Current Authenticated User Details
    */
   static async getCurrentUser(userId: string): Promise<SafeUser> {
-    const [user] = await db
-      .select({
-        id: users.id,
-        email: users.email,
-        phone: users.phone,
-        role: users.role,
-        status: users.status,
-        emailVerified: users.emailVerified,
-        phoneVerified: users.phoneVerified,
-        authProvider: users.authProvider,
-        lastLoginAt: users.lastLoginAt,
-        lastActiveAt: users.lastActiveAt,
-        createdAt: users.createdAt,
-        updatedAt: users.updatedAt,
-      })
-      .from(users)
-      .where(eq(users.id, userId));
+    const user = await AuthRepository.findUserById(userId);
 
     if (!user) {
       const error = new Error("User not found") as AppError;
@@ -517,7 +438,18 @@ export class AuthService {
       throw error;
     }
 
-    return user;
+    return {
+      id: user.id,
+      userId: user.id,
+      phone: user.phone,
+      countryCode: "+1",
+      preferredLanguage: "en",
+      role: user.role,
+      isVerified: user.phoneVerified,
+      isActive: user.status === "active",
+      profileCompleted: false,
+      createdAt: user.createdAt,
+    };
   }
 
   /**
@@ -528,7 +460,7 @@ export class AuthService {
     userAgent = null,
     ipAddress = null,
   }: RefreshTokenParams): Promise<TokensResponse> {
-    let decoded;
+    let decoded: ReturnType<typeof verifyRefreshToken>;
     try {
       decoded = verifyRefreshToken(refreshToken);
     } catch {
@@ -538,66 +470,45 @@ export class AuthService {
       throw error;
     }
 
-    const tokenHash = hashToken(refreshToken);
-
-    const [session] = await db
-      .select()
-      .from(userSessions)
-      .where(
-        and(
-          eq(userSessions.refreshTokenHash, tokenHash),
-          isNull(userSessions.revokedAt)
-        )
-      );
+    const session = await AuthRepository.findActiveSessionByRefreshTokenHash(
+      AuthService.hashRefreshToken(refreshToken),
+    );
 
     if (!session || new Date(session.expiresAt).getTime() < Date.now()) {
       const error = new Error(
-        "Session expired or revoked. Please login again."
+        "Session expired or revoked. Please login again.",
       ) as AppError;
       error.statusCode = 401;
       error.code = "SESSION_EXPIRED";
       throw error;
     }
 
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, decoded.id));
+    const user = await AuthRepository.findUserById(decoded.id);
 
     if (!user || user.status !== "active") {
-      const error = new Error("User account not found or suspended") as AppError;
+      const error = new Error(
+        "User account not found or suspended",
+      ) as AppError;
       error.statusCode = 401;
       error.code = "UNAUTHORIZED";
       throw error;
     }
 
-    const safeUser: SafeUser = {
-      id: user.id,
-      email: user.email,
-      phone: user.phone,
-      role: user.role,
-      status: user.status,
-      emailVerified: user.emailVerified,
-      phoneVerified: user.phoneVerified,
-      authProvider: user.authProvider,
-      lastLoginAt: user.lastLoginAt,
-      lastActiveAt: user.lastActiveAt,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-    };
+    const tokens = generateTokens(
+      {
+        id: user.id,
+        phone: user.phone,
+        role: user.role,
+      },
+      session.id,
+    );
 
-    const tokens = generateTokens(safeUser);
-    const newRefreshHash = hashToken(tokens.refreshToken);
-
-    await db
-      .update(userSessions)
-      .set({
-        refreshTokenHash: newRefreshHash,
-        userAgent,
-        ipAddress,
-        lastUsedAt: new Date(),
-      })
-      .where(eq(userSessions.id, session.id));
+    await AuthRepository.updateSession(session.id, {
+      refreshTokenHash: AuthService.hashRefreshToken(tokens.refreshToken),
+      deviceInfo: userAgent,
+      ipAddress,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    });
 
     return tokens;
   }
@@ -607,25 +518,25 @@ export class AuthService {
    */
   static async logout({
     refreshToken,
-    userId,
+    userId: _userId,
   }: LogoutParams): Promise<{ success: boolean; message: string }> {
     if (refreshToken) {
-      const tokenHash = hashToken(refreshToken);
-      await db
-        .update(userSessions)
-        .set({ revokedAt: new Date() })
-        .where(eq(userSessions.refreshTokenHash, tokenHash));
-    } else if (userId) {
-      await db
-        .update(userSessions)
-        .set({ revokedAt: new Date() })
-        .where(eq(userSessions.userId, userId));
+      await AuthRepository.revokeSessionByRefreshTokenHash(
+        AuthService.hashRefreshToken(refreshToken),
+      );
     }
 
     return {
       success: true,
       message: "Logged out successfully",
     };
+  }
+
+  /**
+   * Revoke every active session for a user.
+   */
+  static async logoutAllSessions(userId: string): Promise<void> {
+    await AuthRepository.revokeAllSessions(userId);
   }
 }
 

@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
+import type { ZodType } from "zod";
 import ApiResponse from "../utils/response";
-import { SUPPORTED_LANGUAGES } from "../config/constants";
 
 /**
  * Validate phone number is exactly 10 digits (after stripping country code if present).
@@ -153,20 +153,13 @@ export const validateSocialAuth =
     if (!providerUserId) {
       return ApiResponse.error(res, {
         statusCode: 400,
-        message: `Missing ${provider} provider user identifier`,
-        code: "MISSING_PROVIDER_USER_ID",
+        message: "Invalid request data",
+        code: "VALIDATION_ERROR",
+        errors: result.error.flatten(),
       });
     }
 
-    if (preferredLanguage && !isValidLanguageCode(preferredLanguage)) {
-      return ApiResponse.error(res, {
-        statusCode: 400,
-        message: `Invalid language code. Supported: ${SUPPORTED_LANGUAGES.map((l) => l.code).join(", ")}`,
-        code: "INVALID_LANGUAGE",
-      });
-    }
-
-    req.body.provider = provider;
+    req.body = result.data;
     return next();
   };
 

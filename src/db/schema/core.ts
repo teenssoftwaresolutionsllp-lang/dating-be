@@ -43,9 +43,7 @@ export const users = pgTable(
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
     lastActiveAt: timestamp("last_active_at", { withTimezone: true }),
     passwordChangedAt: timestamp("password_changed_at", { withTimezone: true }),
-    failedLoginAttempts: smallint("failed_login_attempts")
-      .default(0)
-      .notNull(),
+    failedLoginAttempts: smallint("failed_login_attempts").default(0).notNull(),
     lockedUntil: timestamp("locked_until", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -65,9 +63,9 @@ export const users = pgTable(
     index("users_last_active_at_idx").on(table.lastActiveAt),
     check(
       "users_failed_attempts_non_negative_check",
-      sql`${table.failedLoginAttempts} >= 0`
+      sql`${table.failedLoginAttempts} >= 0`,
     ),
-  ]
+  ],
 );
 
 export type User = typeof users.$inferSelect;
@@ -87,8 +85,9 @@ export const profiles = pgTable(
       .unique()
       .references(() => users.id, { onDelete: "cascade" }),
     name: varchar("name", { length: 100 }).notNull(),
-    dateOfBirth: date("date_of_birth", { mode: "string" }).notNull(),
+    dateOfBirth: date("date_of_birth", { mode: "string" }),
     gender: varchar("gender", { length: 30 }).notNull(), // male, female, non_binary, other
+    religion: varchar("religion", { length: 50 }),
     heightCm: smallint("height_cm"),
     bio: text("bio"),
     relationshipStatus: varchar("relationship_status", { length: 30 }),
@@ -113,9 +112,9 @@ export const profiles = pgTable(
     index("profiles_lat_long_idx").on(table.latitude, table.longitude),
     check(
       "profiles_height_positive_check",
-      sql`${table.heightCm} IS NULL OR ${table.heightCm} > 0`
+      sql`${table.heightCm} IS NULL OR ${table.heightCm} > 0`,
     ),
-  ]
+  ],
 );
 
 export type Profile = typeof profiles.$inferSelect;
@@ -145,7 +144,7 @@ export const userDevices = pgTable(
   (table) => [
     index("user_devices_user_id_idx").on(table.userId),
     uniqueIndex("user_devices_token_unique_idx").on(table.deviceToken),
-  ]
+  ],
 );
 
 export type UserDevice = typeof userDevices.$inferSelect;
@@ -179,11 +178,11 @@ export const userSessions = pgTable(
   (table) => [
     index("user_sessions_user_id_idx").on(table.userId),
     uniqueIndex("user_sessions_refresh_hash_unique_idx").on(
-      table.refreshTokenHash
+      table.refreshTokenHash,
     ),
     index("user_sessions_expires_at_idx").on(table.expiresAt),
     index("user_sessions_device_id_idx").on(table.deviceId),
-  ]
+  ],
 );
 
 export type UserSession = typeof userSessions.$inferSelect;
@@ -215,7 +214,7 @@ export const otpVerifications = pgTable(
     index("otp_expires_at_idx").on(table.expiresAt),
     index("otp_user_id_idx").on(table.userId),
     check("otp_attempts_non_negative_check", sql`${table.attempts} >= 0`),
-  ]
+  ],
 );
 
 export type OtpVerification = typeof otpVerifications.$inferSelect;
@@ -243,7 +242,7 @@ export const passwordResetTokens = pgTable(
     index("pwd_reset_user_id_idx").on(table.userId),
     uniqueIndex("pwd_reset_token_hash_unique_idx").on(table.tokenHash),
     index("pwd_reset_expires_at_idx").on(table.expiresAt),
-  ]
+  ],
 );
 
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
@@ -273,7 +272,7 @@ export const userLoginEvents = pgTable(
     index("login_events_user_id_idx").on(table.userId),
     index("login_events_email_idx").on(table.email),
     index("login_events_created_at_idx").on(table.createdAt),
-  ]
+  ],
 );
 
 export type UserLoginEvent = typeof userLoginEvents.$inferSelect;
@@ -306,9 +305,7 @@ export const userSettings = pgTable(
       .defaultNow()
       .notNull(),
   },
-  (table) => [
-    uniqueIndex("user_settings_user_id_unique_idx").on(table.userId),
-  ]
+  (table) => [uniqueIndex("user_settings_user_id_unique_idx").on(table.userId)],
 );
 
 export type UserSetting = typeof userSettings.$inferSelect;
@@ -341,7 +338,7 @@ export const notificationSettings = pgTable(
   },
   (table) => [
     uniqueIndex("notif_settings_user_id_unique_idx").on(table.userId),
-  ]
+  ],
 );
 
 export type NotificationSetting = typeof notificationSettings.$inferSelect;

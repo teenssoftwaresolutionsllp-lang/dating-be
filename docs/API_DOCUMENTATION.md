@@ -13,7 +13,8 @@ The backend uses:
 - Drizzle ORM
 - Zod validation
 - JWT access tokens
-- HTTP-only refresh-token cookies
+- HTTP-only refresh-token cookies for browsers
+- JSON refresh-token transport for React Native clients
 
 The API currently supports:
 
@@ -458,11 +459,11 @@ if (json.data && json.data.tokens && json.data.tokens.accessToken) {
 }
 ```
 
-Important React Native note:
-
-- the current refresh controller is cookie-based
-- mobile refresh-token body support is not currently enabled
-- React Native clients will need a later refresh-token transport update
+React Native clients should send `X-Client-Platform: react-native`. Login and
+refresh responses then include the refresh token in JSON, and the client can
+send it in the `refreshToken` request field. Browser clients continue using the
+HTTP-only cookie automatically. The complete React Native example is in
+[Section 8.7](#87-react-native-authentication-example).
 
 ### 8.5 Logout
 
@@ -516,7 +517,101 @@ Expected response:
 }
 ```
 
-### 8.7 Authentication profile
+### 8.7 React Native authentication example
+
+React Native does not automatically manage browser cookies. Use the access
+token for protected requests and securely store the refresh token with the
+platform keychain. Expo applications can use `expo-secure-store`:
+
+```bash
+npx expo install expo-secure-store
+```
+
+For a physical device, replace `localhost` with the development computer's
+LAN IP address. For example:
+
+```ts
+const API_URL = "http://192.168.1.10:5000/api/v1";
+```
+
+Verify the OTP and identify the client as React Native:
+
+```ts
+import * as SecureStore from "expo-secure-store";
+
+const response = await fetch(`${API_URL}/auth/verify-otp`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "X-Client-Platform": "react-native",
+  },
+  body: JSON.stringify({
+    phone: "9876543210",
+    countryCode: "+91",
+    otp: "1234",
+    preferredLanguage: "en",
+  }),
+});
+
+const result = await response.json();
+if (!response.ok) throw new Error(result.message);
+
+await SecureStore.setItemAsync(
+  "refreshToken",
+  result.data.tokens.refreshToken,
+);
+const accessToken = result.data.tokens.accessToken;
+```
+
+Call protected endpoints with the access token:
+
+```ts
+const profileResponse = await fetch(`${API_URL}/profile/me`, {
+  headers: {
+    Authorization: `Bearer ${accessToken}`,
+  },
+});
+```
+
+When the access token expires, refresh it and replace both stored values:
+
+```ts
+const refreshToken = await SecureStore.getItemAsync("refreshToken");
+const response = await fetch(`${API_URL}/auth/refresh-token`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "X-Client-Platform": "react-native",
+  },
+  body: JSON.stringify({ refreshToken }),
+});
+
+const result = await response.json();
+if (!response.ok) throw new Error(result.message);
+
+await SecureStore.setItemAsync(
+  "refreshToken",
+  result.data.tokens.refreshToken,
+);
+const newAccessToken = result.data.tokens.accessToken;
+```
+
+Logout the current React Native session by sending the stored refresh token:
+
+```ts
+const refreshToken = await SecureStore.getItemAsync("refreshToken");
+await fetch(`${API_URL}/auth/logout`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "X-Client-Platform": "react-native",
+  },
+  body: JSON.stringify({ refreshToken }),
+});
+await SecureStore.deleteItemAsync("refreshToken");
+```
+
+### 8.8 Authentication profile
 
 ```http
 GET {{baseUrl}}/api/v1/auth/profile
@@ -1397,7 +1492,7 @@ removed `users.onboarding_step` or `users.onboarding_completed_at` columns.
 
 ## 14. Known Limitations
 
-1. The refresh endpoint currently reads the refresh token from an HTTP-only cookie. React Native body-token refresh support is not implemented yet.
+1. React Native clients must securely store refresh tokens and send `X-Client-Platform: react-native` when using JSON refresh-token transport.
 2. Languages and interests require master data to be inserted before selection requests can succeed.
 3. Profile photos are stored in Cloudinary; the local filesystem is not used for new profile photo uploads.
 4. KYC uploads are currently marked `verified` immediately. Admin or provider verification is not implemented yet.

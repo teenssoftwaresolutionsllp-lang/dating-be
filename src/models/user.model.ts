@@ -9,7 +9,6 @@ import {
   type OtpVerification,
   type NewOtpVerification,
 } from "../db/schema";
-import type { SocialAccount, NewSocialAccount } from "../types";
 
 export {
   users,
@@ -24,6 +23,4 @@ export {
   type NewUserSession,
   type OtpVerification,
   type NewOtpVerification,
-  type SocialAccount,
-  type NewSocialAccount,
 };

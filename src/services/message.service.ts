@@ -1,6 +1,12 @@
 import { db } from "../db/index";
-import { users } from "../db/schema";
-import { eq } from "drizzle-orm";
+import {
+  conversationMembers,
+  conversations,
+  matches,
+  messages,
+  users,
+} from "../db/schema";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import type {
   AppError,
   SendMessageParams,
@@ -11,11 +17,28 @@ import type {
   PaginatedResult,
 } from "../types/index";
 
-/**
- * In-memory message store (used by message controllers pending DB query integration)
- */
-const messageStore: MessageRecord[] = [];
-let msgIdCounter = 1;
+const findConversationId = async (userId: string, otherUserId: string) => {
+  const ownConversations = await db
+    .select({ conversationId: conversationMembers.conversationId })
+    .from(conversationMembers)
+    .where(eq(conversationMembers.userId, userId));
+  for (const ownConversation of ownConversations) {
+    const [member] = await db
+      .select({ conversationId: conversationMembers.conversationId })
+      .from(conversationMembers)
+      .where(
+        and(
+          eq(
+            conversationMembers.conversationId,
+            ownConversation.conversationId,
+          ),
+          eq(conversationMembers.userId, otherUserId),
+        ),
+      );
+    if (member) return member.conversationId;
+  }
+  return undefined;
+};
 
 export class MessageService {
   /**
@@ -43,7 +66,7 @@ export class MessageService {
 
     if (content.length > 2000) {
       const error = new Error(
-        "Message content exceeds maximum length of 2000 characters"
+        "Message content exceeds maximum length of 2000 characters",
       ) as AppError;
       error.statusCode = 400;
       error.code = "MESSAGE_TOO_LONG";
@@ -63,21 +86,30 @@ export class MessageService {
       throw error;
     }
 
-    const now = new Date();
-    const message: MessageRecord = {
-      id: `msg_${msgIdCounter++}`,
-      senderId,
+    const conversationId = await findConversationId(senderId, receiverId);
+    if (!conversationId) {
+      throw new Error("Messaging is available only after a mutual match");
+    }
+    const [message] = await db
+      .insert(messages)
+      .values({
+        conversationId,
+        senderId,
+        content: content.trim(),
+        messageType,
+      })
+      .returning();
+    return {
+      id: message.id,
+      senderId: message.senderId,
       receiverId,
-      content: content.trim(),
-      messageType,
+      content: message.content || "",
+      messageType: message.messageType,
       isRead: false,
       isDeleted: false,
-      createdAt: now,
-      updatedAt: now,
+      createdAt: message.createdAt,
+      updatedAt: message.editedAt || message.createdAt,
     };
-
-    messageStore.push(message);
-    return message;
   }
 
   /**
@@ -89,21 +121,30 @@ export class MessageService {
     page = 1,
     limit = 50,
   }: GetConversationParams): Promise<PaginatedResult<MessageRecord>> {
-    const allMessages = messageStore.filter(
-      (m) =>
-        !m.isDeleted &&
-        ((m.senderId === userId && m.receiverId === otherUserId) ||
-          (m.senderId === otherUserId && m.receiverId === userId))
-    );
-
-    // Mark messages from other user as read
-    allMessages.forEach((m) => {
-      if (m.senderId === otherUserId && !m.isRead) {
-        m.isRead = true;
-        m.updatedAt = new Date();
-      }
-    });
-
+    const conversationId = await findConversationId(userId, otherUserId);
+    if (!conversationId)
+      return { items: [], total: 0, page, limit, totalPages: 0 };
+    const rows = await db
+      .select()
+      .from(messages)
+      .where(
+        and(
+          eq(messages.conversationId, conversationId),
+          isNull(messages.deletedAt),
+        ),
+      )
+      .orderBy(desc(messages.createdAt));
+    const allMessages = rows.map((message) => ({
+      id: message.id,
+      senderId: message.senderId,
+      receiverId: message.senderId === userId ? otherUserId : userId,
+      content: message.content || "",
+      messageType: message.messageType,
+      isRead: message.senderId === userId,
+      isDeleted: false,
+      createdAt: message.createdAt,
+      updatedAt: message.editedAt || message.createdAt,
+    }));
     const total = allMessages.length;
     const totalPages = Math.ceil(total / limit);
     const offset = (page - 1) * limit;
@@ -118,28 +159,54 @@ export class MessageService {
    * Get conversation list (inbox) for a user
    */
   static async getConversations(
-    userId: string
+    userId: string,
   ): Promise<ConversationSummary[]> {
-    const userMessages = messageStore.filter(
-      (m) => !m.isDeleted && (m.senderId === userId || m.receiverId === userId)
-    );
+    const memberships = await db
+      .select({ conversationId: conversationMembers.conversationId })
+      .from(conversationMembers)
+      .where(eq(conversationMembers.userId, userId));
+    const userMessages: MessageRecord[] = [];
+    for (const membership of memberships) {
+      const rows = await db
+        .select()
+        .from(messages)
+        .where(
+          and(
+            eq(messages.conversationId, membership.conversationId),
+            isNull(messages.deletedAt),
+          ),
+        )
+        .orderBy(desc(messages.createdAt));
+      userMessages.push(
+        ...rows.map((message) => ({
+          id: message.id,
+          senderId: message.senderId,
+          receiverId: message.senderId === userId ? "" : userId,
+          content: message.content || "",
+          messageType: message.messageType,
+          isRead: message.senderId === userId,
+          isDeleted: false,
+          createdAt: message.createdAt,
+          updatedAt: message.editedAt || message.createdAt,
+        })),
+      );
+    }
 
     // Build unique conversation partner list
     const partnerMap = new Map<string, ConversationSummary>();
 
     for (const msg of userMessages.sort(
-      (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
+      (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
     )) {
-      const partnerId =
-        msg.senderId === userId ? msg.receiverId : msg.senderId;
+      const partnerId = msg.senderId === userId ? msg.receiverId : msg.senderId;
 
       if (!partnerMap.has(partnerId)) {
-        const unreadCount = messageStore.filter(
+        const unreadCount = userMessages.filter(
           (m) =>
             !m.isDeleted &&
             m.senderId === partnerId &&
             m.receiverId === userId &&
-            !m.isRead
+            !m.isRead,
         ).length;
 
         partnerMap.set(partnerId, {
@@ -161,31 +228,30 @@ export class MessageService {
     messageId,
     userId,
   }: DeleteMessageParams): Promise<void> {
-    const msgIndex = messageStore.findIndex((m) => m.id === messageId);
-
-    if (msgIndex === -1) {
+    const [message] = await db
+      .select({ id: messages.id, senderId: messages.senderId })
+      .from(messages)
+      .where(eq(messages.id, messageId));
+    if (!message) {
       const error = new Error("Message not found") as AppError;
       error.statusCode = 404;
       error.code = "MESSAGE_NOT_FOUND";
       throw error;
     }
 
-    const message = messageStore[msgIndex];
-
     if (message.senderId !== userId) {
       const error = new Error(
-        "Forbidden: You can only delete your own messages"
+        "Forbidden: You can only delete your own messages",
       ) as AppError;
       error.statusCode = 403;
       error.code = "FORBIDDEN";
       throw error;
     }
 
-    messageStore[msgIndex] = {
-      ...message,
-      isDeleted: true,
-      updatedAt: new Date(),
-    };
+    await db
+      .update(messages)
+      .set({ deletedAt: new Date() })
+      .where(eq(messages.id, messageId));
   }
 }
 

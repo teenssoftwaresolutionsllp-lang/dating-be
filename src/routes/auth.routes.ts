@@ -4,7 +4,11 @@ import { validateSocialAuth } from "../middleware/validation.middleware";
 import { authenticate } from "../middleware/auth.middleware";
 import { asyncHandler } from "../middleware/error.middleware";
 import { validateBody } from "../middleware/validation.middleware";
-import { sendOtpSchema, verifyOtpSchema } from "../validation";
+import {
+  sendOtpSchema,
+  verifyOtpSchema,
+  refreshTokenSchema,
+} from "../validation";
 
 const router = Router();
 
@@ -61,7 +65,11 @@ router.post(
 );
 
 // Create a new access token using the refresh-token cookie.
-router.post("/refresh-token", asyncHandler(AuthController.refresh));
+router.post(
+  "/refresh-token",
+  validateBody(refreshTokenSchema.partial()),
+  asyncHandler(AuthController.refresh),
+);
 
 // Revoke the current session and clear the refresh-token cookie.
 router.post("/logout", asyncHandler(AuthController.logout));

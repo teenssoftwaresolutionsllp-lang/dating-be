@@ -1,4 +1,4 @@
-import { and, count, eq, inArray } from "drizzle-orm";
+import { and, count, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db/index";
 import {
   datingPreferences,
@@ -122,14 +122,16 @@ class ProfileRepository {
 
       if (profile) {
         const [languagesResult] = await transaction
-          .select({ count: count() })
+          .select({
+            count: sql<number>`cardinality(${profileLanguages.languageIds})`,
+          })
           .from(profileLanguages)
           .where(eq(profileLanguages.profileId, profile.id));
         const [interestsResult] = await transaction
           .select({ count: count() })
           .from(profileInterests)
           .where(eq(profileInterests.profileId, profile.id));
-        languageCount = Number(languagesResult.count);
+        languageCount = Number(languagesResult?.count ?? 0);
         interestCount = Number(interestsResult.count);
       }
 
@@ -314,15 +316,12 @@ class ProfileRepository {
       }
 
       await transaction
-        .delete(profileLanguages)
-        .where(eq(profileLanguages.profileId, profile.id));
-
-      await transaction.insert(profileLanguages).values(
-        languageIds.map((languageId) => ({
-          profileId: profile.id,
-          languageId,
-        })),
-      );
+        .insert(profileLanguages)
+        .values({ profileId: profile.id, languageIds })
+        .onConflictDoUpdate({
+          target: profileLanguages.profileId,
+          set: { languageIds },
+        });
 
       await transaction
         .update(users)

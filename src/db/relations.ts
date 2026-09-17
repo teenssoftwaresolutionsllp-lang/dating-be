@@ -94,12 +94,8 @@ export const profilesRelations = relations(profiles, ({ many, one }) => ({
     fields: [profiles.userId],
     references: [users.id],
   }),
-  languages: many(profileLanguages),
+  languages: one(profileLanguages),
   interests: many(profileInterests),
-}));
-
-export const languagesRelations = relations(languages, ({ many }) => ({
-  profiles: many(profileLanguages),
 }));
 
 export const profileLanguagesRelations = relations(
@@ -109,11 +105,7 @@ export const profileLanguagesRelations = relations(
       fields: [profileLanguages.profileId],
       references: [profiles.id],
     }),
-    language: one(languages, {
-      fields: [profileLanguages.languageId],
-      references: [languages.id],
-    }),
-  })
+  }),
 );
 
 export const interestsRelations = relations(interests, ({ many }) => ({
@@ -131,7 +123,7 @@ export const profileInterestsRelations = relations(
       fields: [profileInterests.interestId],
       references: [interests.id],
     }),
-  })
+  }),
 );
 
 export const userDevicesRelations = relations(userDevices, ({ many, one }) => ({
@@ -161,7 +153,7 @@ export const otpVerificationsRelations = relations(
       fields: [otpVerifications.userId],
       references: [users.id],
     }),
-  })
+  }),
 );
 
 export const passwordResetTokensRelations = relations(
@@ -171,7 +163,7 @@ export const passwordResetTokensRelations = relations(
       fields: [passwordResetTokens.userId],
       references: [users.id],
     }),
-  })
+  }),
 );
 
 export const userLoginEventsRelations = relations(
@@ -181,7 +173,7 @@ export const userLoginEventsRelations = relations(
       fields: [userLoginEvents.userId],
       references: [users.id],
     }),
-  })
+  }),
 );
 
 export const userSettingsRelations = relations(userSettings, ({ one }) => ({
@@ -198,7 +190,7 @@ export const notificationSettingsRelations = relations(
       fields: [notificationSettings.userId],
       references: [users.id],
     }),
-  })
+  }),
 );
 
 export const educationRelations = relations(education, ({ one }) => ({
@@ -220,7 +212,7 @@ export const kycVerificationsRelations = relations(
       references: [users.id],
       relationName: "kycReviewer",
     }),
-  })
+  }),
 );
 
 export const profilePhotosRelations = relations(profilePhotos, ({ one }) => ({
@@ -244,7 +236,7 @@ export const datingPreferencesRelations = relations(
       fields: [datingPreferences.userId],
       references: [users.id],
     }),
-  })
+  }),
 );
 
 export const swipesRelations = relations(swipes, ({ one }) => ({
@@ -301,7 +293,7 @@ export const conversationsRelations = relations(
     }),
     members: many(conversationMembers),
     messages: many(messages),
-  })
+  }),
 );
 
 export const conversationMembersRelations = relations(
@@ -315,7 +307,7 @@ export const conversationMembersRelations = relations(
       fields: [conversationMembers.userId],
       references: [users.id],
     }),
-  })
+  }),
 );
 
 export const messagesRelations = relations(messages, ({ many, one }) => ({
@@ -402,19 +394,16 @@ export const userSuspensionsRelations = relations(
       references: [users.id],
       relationName: "suspensionIssuer",
     }),
-  })
+  }),
 );
 
-export const adminAuditLogsRelations = relations(
-  adminAuditLogs,
-  ({ one }) => ({
-    admin: one(users, {
-      fields: [adminAuditLogs.adminId],
-      references: [users.id],
-      relationName: "adminActor",
-    }),
-  })
-);
+export const adminAuditLogsRelations = relations(adminAuditLogs, ({ one }) => ({
+  admin: one(users, {
+    fields: [adminAuditLogs.adminId],
+    references: [users.id],
+    relationName: "adminActor",
+  }),
+}));
 
 export const notificationsRelations = relations(
   notifications,
@@ -424,7 +413,7 @@ export const notificationsRelations = relations(
       references: [users.id],
     }),
     deliveries: many(pushNotificationDeliveries),
-  })
+  }),
 );
 
 export const pushNotificationDeliveriesRelations = relations(
@@ -438,7 +427,7 @@ export const pushNotificationDeliveriesRelations = relations(
       fields: [pushNotificationDeliveries.deviceId],
       references: [userDevices.id],
     }),
-  })
+  }),
 );
 
 export const subscriptionPlansRelations = relations(
@@ -446,7 +435,7 @@ export const subscriptionPlansRelations = relations(
   ({ many }) => ({
     subscriptions: many(subscriptions),
     planFeatures: many(planFeatures),
-  })
+  }),
 );
 
 export const subscriptionFeaturesRelations = relations(
@@ -454,7 +443,7 @@ export const subscriptionFeaturesRelations = relations(
   ({ many }) => ({
     planFeatures: many(planFeatures),
     usages: many(featureUsage),
-  })
+  }),
 );
 
 export const planFeaturesRelations = relations(planFeatures, ({ one }) => ({
@@ -480,7 +469,7 @@ export const subscriptionsRelations = relations(
       references: [subscriptionPlans.id],
     }),
     payments: many(payments),
-  })
+  }),
 );
 
 export const paymentsRelations = relations(payments, ({ one }) => ({

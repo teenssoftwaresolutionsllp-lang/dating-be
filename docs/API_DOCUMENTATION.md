@@ -556,10 +556,7 @@ const response = await fetch(`${API_URL}/auth/verify-otp`, {
 const result = await response.json();
 if (!response.ok) throw new Error(result.message);
 
-await SecureStore.setItemAsync(
-  "refreshToken",
-  result.data.tokens.refreshToken,
-);
+await SecureStore.setItemAsync("refreshToken", result.data.tokens.refreshToken);
 const accessToken = result.data.tokens.accessToken;
 ```
 
@@ -589,10 +586,7 @@ const response = await fetch(`${API_URL}/auth/refresh-token`, {
 const result = await response.json();
 if (!response.ok) throw new Error(result.message);
 
-await SecureStore.setItemAsync(
-  "refreshToken",
-  result.data.tokens.refreshToken,
-);
+await SecureStore.setItemAsync("refreshToken", result.data.tokens.refreshToken);
 const newAccessToken = result.data.tokens.accessToken;
 ```
 

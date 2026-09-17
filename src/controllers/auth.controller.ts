@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import type { TokensResponse } from "../types/index";
 import AuthService from "../services/auth.service";
 import ApiResponse from "../utils/response";
 
@@ -19,9 +20,25 @@ const setRefreshTokenCookie = (res: Response, refreshToken: string): void => {
   });
 };
 
+const includeRefreshTokenInBody = (req: Request): boolean =>
+  req.headers["x-client-platform"] === "react-native";
+
+const tokenResponse = (
+  req: Request,
+  refreshToken: string,
+  publicTokens: Omit<TokensResponse, "refreshToken">,
+) =>
+  includeRefreshTokenInBody(req)
+    ? { ...publicTokens, refreshToken }
+    : publicTokens;
+
 export class AuthController {
   static async refresh(req: Request, res: Response): Promise<Response> {
-    const refreshToken = getRefreshTokenCookie(req.headers.cookie);
+    const refreshToken =
+      getRefreshTokenCookie(req.headers.cookie) ||
+      (typeof req.body?.refreshToken === "string"
+        ? req.body.refreshToken.trim()
+        : undefined);
     if (!refreshToken) {
       return ApiResponse.error(res, {
         statusCode: 401,
@@ -41,7 +58,9 @@ export class AuthController {
     return ApiResponse.success(res, {
       statusCode: 200,
       message: "Token refreshed successfully",
-      data: { tokens: publicTokens },
+      data: {
+        tokens: tokenResponse(req, rotatedRefreshToken, publicTokens),
+      },
     });
   }
 
@@ -87,30 +106,26 @@ export class AuthController {
     });
   }
 
-  /**
-   * POST /api/v1/auth/verify-otp
-   * Screen 3: Verify 4-digit OTP and login or auto-register user
-   */
-  static async verifyOtp(req: Request, res: Response): Promise<Response> {
-    const { phone, countryCode, otp, preferredLanguage } = req.body;
-    const userAgent = req.headers["user-agent"] as string | undefined;
-    const ipAddress = req.ip || (req.socket?.remoteAddress as string | undefined);
-
-    const result = await AuthService.verifyOtp({
-      phone,
-      countryCode,
-      otp,
-      preferredLanguage,
-      userAgent,
-      ipAddress,
+  static async socialAuth(req: Request, res: Response): Promise<Response> {
+    const result = await AuthService.socialAuth({
+      provider: req.body.provider,
+      providerUserId: req.body.providerUserId,
+      providerEmail: req.body.providerEmail,
+      userAgent: req.headers["user-agent"] as string | undefined,
+      ipAddress: req.ip || req.socket?.remoteAddress,
     });
+    const { refreshToken, ...publicTokens } = result.tokens;
+    setRefreshTokenCookie(res, refreshToken);
 
     return ApiResponse.success(res, {
       statusCode: 200,
       message: result.isNewUser
-        ? "Account created and verified successfully"
-        : "OTP verified and logged in successfully",
-      data: result,
+        ? "Social account created successfully"
+        : "Social login successful",
+      data: {
+        ...result,
+        tokens: tokenResponse(req, refreshToken, publicTokens),
+      },
     });
   }
 
@@ -192,7 +207,7 @@ export class AuthController {
         : "OTP verified and logged in successfully",
       data: {
         ...result,
-        tokens: publicTokens,
+        tokens: tokenResponse(req, refreshToken, publicTokens),
       },
     });
   }
@@ -202,7 +217,11 @@ export class AuthController {
    * Invalidate session & logout
    */
   static async logout(req: Request, res: Response): Promise<Response> {
-    const refreshToken = getRefreshTokenCookie(req.headers.cookie);
+    const refreshToken =
+      getRefreshTokenCookie(req.headers.cookie) ||
+      (typeof req.body?.refreshToken === "string"
+        ? req.body.refreshToken.trim()
+        : undefined);
 
     const result = await AuthService.logout({ refreshToken });
     res.clearCookie("refreshToken", {

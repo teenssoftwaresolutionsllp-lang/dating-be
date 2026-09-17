@@ -1,6 +1,13 @@
 import { db } from "../db/index";
-import { users } from "../db/schema";
-import { eq } from "drizzle-orm";
+import {
+  conversationMembers,
+  conversations,
+  matches,
+  swipeEvents,
+  swipes,
+  users,
+} from "../db/schema";
+import { and, desc, eq, or } from "drizzle-orm";
 import type {
   AppError,
   SwipeParams,
@@ -17,6 +24,12 @@ import type {
  */
 const swipeStore = new Map<string, MatchRecord>();
 let matchIdCounter = 1;
+
+const actionForDirection = (direction: SwipeDirection): string =>
+  direction === "dislike" ? "reject" : direction;
+
+const directionForAction = (action: string): SwipeDirection =>
+  action === "reject" ? "dislike" : (action as SwipeDirection);
 
 export class MatchService {
   /**
@@ -47,53 +60,70 @@ export class MatchService {
       throw error;
     }
 
-    // Prevent duplicate swipes
-    const swipeKey = `${userId}-${targetUserId}`;
-    if (swipeStore.has(swipeKey)) {
+    const [existing] = await db
+      .select({ id: swipes.id })
+      .from(swipes)
+      .where(
+        and(eq(swipes.userId, userId), eq(swipes.targetUserId, targetUserId)),
+      );
+    if (existing) {
       const error = new Error(
-        "You have already swiped on this user"
+        "You have already swiped on this user",
       ) as AppError;
       error.statusCode = 409;
       error.code = "ALREADY_SWIPED";
       throw error;
     }
 
-    const now = new Date();
-    const record: MatchRecord = {
-      id: `match_${matchIdCounter++}`,
-      userId,
-      targetUserId,
-      direction,
-      isMatch: false,
-      createdAt: now,
-    };
+    const action = actionForDirection(direction);
+    await db
+      .insert(swipes)
+      .values({ userId, targetUserId, action, source: "discovery" });
+    await db
+      .insert(swipeEvents)
+      .values({ userId, targetUserId, action, source: "discovery" });
 
-    swipeStore.set(swipeKey, record);
-
-    // Check if the other user already liked us back
-    let isMatch = false;
     let matchId: string | undefined;
-
-    if (direction === "like" || direction === "superlike") {
-      const reverseKey = `${targetUserId}-${userId}`;
-      const reverseSwipe = swipeStore.get(reverseKey);
-
-      if (
-        reverseSwipe &&
-        (reverseSwipe.direction === "like" ||
-          reverseSwipe.direction === "superlike")
-      ) {
-        isMatch = true;
-        matchId = record.id;
-        // Mark both records as matched
-        swipeStore.set(swipeKey, { ...record, isMatch: true });
-        swipeStore.set(reverseKey, { ...reverseSwipe, isMatch: true });
+    if (action === "like" || action === "superlike") {
+      const [reverse] = await db
+        .select({ id: swipes.id })
+        .from(swipes)
+        .where(
+          and(eq(swipes.userId, targetUserId), eq(swipes.targetUserId, userId)),
+        );
+      if (reverse) {
+        const [match] = await db
+          .insert(matches)
+          .values({
+            user1Id: userId < targetUserId ? userId : targetUserId,
+            user2Id: userId < targetUserId ? targetUserId : userId,
+            status: "active",
+          })
+          .onConflictDoNothing()
+          .returning({ id: matches.id });
+        matchId = match?.id;
+        if (matchId) {
+          const [conversation] = await db
+            .insert(conversations)
+            .values({ matchId })
+            .onConflictDoNothing()
+            .returning({ id: conversations.id });
+          if (conversation) {
+            await db
+              .insert(conversationMembers)
+              .values([
+                { conversationId: conversation.id, userId },
+                { conversationId: conversation.id, userId: targetUserId },
+              ])
+              .onConflictDoNothing();
+          }
+        }
       }
     }
 
     return {
       direction,
-      isMatch,
+      isMatch: Boolean(matchId),
       matchId,
       targetUser: {
         id: targetUser.id,
@@ -105,44 +135,66 @@ export class MatchService {
   /**
    * Get all mutual matches for a user
    */
+
   static async getMatches({
     userId,
     page = 1,
     limit = 20,
   }: GetMatchesParams): Promise<PaginatedResult<MatchRecord>> {
-    const allMatches = Array.from(swipeStore.values()).filter(
-      (r) => r.isMatch && r.userId === userId
-    );
-
-    const total = allMatches.length;
-    const totalPages = Math.ceil(total / limit);
-    const offset = (page - 1) * limit;
-    const items = allMatches
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-      .slice(offset, offset + limit);
-
-    return { items, total, page, limit, totalPages };
+    const rows = await db
+      .select({
+        id: matches.id,
+        user1Id: matches.user1Id,
+        user2Id: matches.user2Id,
+        matchedAt: matches.matchedAt,
+      })
+      .from(matches)
+      .where(
+        and(
+          eq(matches.status, "active"),
+          or(eq(matches.user1Id, userId), eq(matches.user2Id, userId)),
+        ),
+      )
+      .orderBy(desc(matches.matchedAt));
+    const total = rows.length;
+    const items = rows.slice((page - 1) * limit, page * limit).map((row) => ({
+      id: row.id,
+      userId,
+      targetUserId: row.user1Id === userId ? row.user2Id : row.user1Id,
+      direction: "like" as SwipeDirection,
+      isMatch: true,
+      createdAt: row.matchedAt,
+    }));
+    return { items, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   /**
    * Remove a match (unmatch)
    */
   static async unmatch(userId: string, matchedUserId: string): Promise<void> {
-    const keyA = `${userId}-${matchedUserId}`;
-    const keyB = `${matchedUserId}-${userId}`;
-
-    const recordA = swipeStore.get(keyA);
-    const recordB = swipeStore.get(keyB);
-
-    if (!recordA?.isMatch && !recordB?.isMatch) {
+    const user1Id = userId < matchedUserId ? userId : matchedUserId;
+    const user2Id = userId < matchedUserId ? matchedUserId : userId;
+    const [updated] = await db
+      .update(matches)
+      .set({
+        status: "unmatched",
+        unmatchedAt: new Date(),
+        unmatchedBy: userId,
+      })
+      .where(
+        and(
+          eq(matches.user1Id, user1Id),
+          eq(matches.user2Id, user2Id),
+          eq(matches.status, "active"),
+        ),
+      )
+      .returning({ id: matches.id });
+    if (!updated) {
       const error = new Error("Match not found") as AppError;
       error.statusCode = 404;
       error.code = "MATCH_NOT_FOUND";
       throw error;
     }
-
-    swipeStore.delete(keyA);
-    swipeStore.delete(keyB);
   }
 
   /**
@@ -150,14 +202,25 @@ export class MatchService {
    */
   static async getSwipeHistory(
     userId: string,
-    direction?: SwipeDirection
+    direction?: SwipeDirection,
   ): Promise<MatchRecord[]> {
-    return Array.from(swipeStore.values())
+    const rows = await db
+      .select()
+      .from(swipes)
+      .where(eq(swipes.userId, userId))
+      .orderBy(desc(swipes.createdAt));
+    return rows
       .filter(
-        (r) =>
-          r.userId === userId && (direction ? r.direction === direction : true)
+        (row) => !direction || directionForAction(row.action) === direction,
       )
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      .map((row) => ({
+        id: row.id,
+        userId: row.userId,
+        targetUserId: row.targetUserId,
+        direction: directionForAction(row.action),
+        isMatch: false,
+        createdAt: row.createdAt,
+      }));
   }
 }
 

@@ -69,6 +69,12 @@ class AuthRepository {
     return user;
   }
 
+  async findUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+
+    return user;
+  }
+
   async createUser(values: NewUser): Promise<User> {
     const [user] = await db.insert(users).values(values).returning();
     return user;
@@ -78,6 +84,16 @@ class AuthRepository {
     const [user] = await db
       .update(users)
       .set({ phoneVerified: true, updatedAt })
+      .where(eq(users.id, userId))
+      .returning();
+
+    return user;
+  }
+
+  async markUserLogin(userId: string, updatedAt: Date): Promise<User> {
+    const [user] = await db
+      .update(users)
+      .set({ lastLoginAt: updatedAt, lastActiveAt: updatedAt, updatedAt })
       .where(eq(users.id, userId))
       .returning();
 

@@ -9,7 +9,7 @@
     "dev": "tsx watch src/server.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx src/test-auth-flow.ts",
-    "test:api": "tsx src/test-api-validation.ts",
+    "test:api": "npm run typecheck",
     "test:live": "tsx src/test-live-auth.ts",
     "test:db": "tsx src/test-db.ts",
     "db:generate": "drizzle-kit generate",

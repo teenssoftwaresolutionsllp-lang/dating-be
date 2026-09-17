@@ -25,6 +25,14 @@ import type {
   User,
 } from "../types/index";
 
+type SocialAuthParams = {
+  provider: string;
+  providerUserId: string;
+  providerEmail?: string;
+  userAgent?: string | null;
+  ipAddress?: string | null;
+};
+
 export class AuthService {
   static hashOtp(otp: string): string {
     return createHash("sha256").update(otp).digest("hex");
@@ -41,12 +49,15 @@ export class AuthService {
     return SUPPORTED_LANGUAGES;
   }
 
-/**
+  /**
    * Normalise a phone number to its 10-digit local form.
    * Strips non-digit characters, then removes a leading country code
    * (handles +91 / 91 prefix for Indian numbers).
    */
-  private static normalisePhone(phone: string, countryCode: string = "+91"): string {
+  private static normalisePhone(
+    phone: string,
+    countryCode: string = "+91",
+  ): string {
     let digits = phone.replace(/[^0-9]/g, "");
     // Strip country code prefix (e.g. 91 from +91)
     const ccDigits = countryCode.replace(/[^0-9]/g, "");
@@ -54,6 +65,26 @@ export class AuthService {
       digits = digits.slice(ccDigits.length);
     }
     return digits;
+  }
+
+  private static toSafeUser(
+    user: User,
+    countryCode = "+91",
+    preferredLanguage = "en",
+  ): SafeUser {
+    return {
+      id: user.id,
+      userId: user.id,
+      phone: user.phone,
+      countryCode,
+      preferredLanguage,
+      role: user.role,
+      isVerified: user.phoneVerified,
+      isActive: user.status === "active",
+      profileCompleted: false,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
   }
 
   /**
@@ -69,7 +100,7 @@ export class AuthService {
 
     // Check for existing active OTP with cooldown (30s)
     const latestOtpRecord = await AuthRepository.findLatestActiveOtp(
-      phone,
+      fullPhone,
       OTP_PURPOSES.LOGIN,
     );
 
@@ -94,12 +125,12 @@ export class AuthService {
     const otpCode = generateOTP(OTP_CONFIG.LENGTH);
 
     const expiresAt = new Date(
-      now.getTime() + OTP_CONFIG.EXPIRY_MINUTES * 60 * 10000
+      now.getTime() + OTP_CONFIG.EXPIRY_MINUTES * 60 * 1000,
     );
 
     // Save OTP to database
     await AuthRepository.createOtp({
-      identifier: phone,
+      identifier: fullPhone,
       codeHash: AuthService.hashOtp(otpCode),
       purpose: OTP_PURPOSES.LOGIN,
       attempts: 0,
@@ -107,10 +138,10 @@ export class AuthService {
     });
 
     // Send SMS simulation/gateway
-    await sendSmsOTP({ phone, countryCode, otp: otpCode });
+    await sendSmsOTP({ phone: localPhone, countryCode, otp: otpCode });
 
     const responseData: SendOtpResult = {
-      phone,
+      phone: localPhone,
       countryCode,
       purpose: OTP_PURPOSES.LOGIN,
       expiresIn: OTP_CONFIG.EXPIRY_MINUTES * 60,
@@ -141,7 +172,7 @@ export class AuthService {
     const now = new Date();
 
     const otpRecord = await AuthRepository.findLatestActiveOtp(
-      phone,
+      fullPhone,
       OTP_PURPOSES.LOGIN,
     );
 
@@ -195,7 +226,7 @@ export class AuthService {
     await AuthRepository.markOtpVerified(otpRecord.id, now);
 
     // Check if user already exists
-    const existingUser = await AuthRepository.findUserByPhone(phone);
+    const existingUser = await AuthRepository.findUserByPhone(fullPhone);
 
     let user: User;
     let isNewUser = false;
@@ -204,8 +235,7 @@ export class AuthService {
       // Auto-register new user
       isNewUser = true;
       user = await AuthRepository.createUser({
-        email: `${phone}@phone.local`,
-        phone,
+        phone: fullPhone,
         phoneVerified: true,
         status: "active",
         authProvider: "phone",
@@ -223,12 +253,21 @@ export class AuthService {
       );
     }
 
-    // Generate JWT access and refresh tokens
-    const tokens = generateTokens(safeUser);
-    const refreshTokenHash = hashToken(tokens.refreshToken);
+    const safeUser = AuthService.toSafeUser(
+      user,
+      countryCode,
+      preferredLanguage,
+    );
+    const sessionId = randomUUID();
+    const tokens = generateTokens(
+      { id: user.id, phone: user.phone, role: user.role },
+      sessionId,
+    );
+    const refreshTokenHash = AuthService.hashRefreshToken(tokens.refreshToken);
     const sessionExpiry = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-    await db.insert(userSessions).values({
+    await AuthRepository.createSession({
+      id: sessionId,
       userId: user.id,
       refreshTokenHash,
       userAgent,
@@ -261,18 +300,10 @@ export class AuthService {
     const now = new Date();
 
     // Fetch the most recent un-verified OTP for this number
-    const [latestOtpRecord] = await db
-      .select()
-      .from(otpVerifications)
-      .where(
-        and(
-          eq(otpVerifications.identifier, fullPhone),
-          eq(otpVerifications.purpose, OTP_PURPOSES.LOGIN),
-          isNull(otpVerifications.verifiedAt)
-        )
-      )
-      .orderBy(desc(otpVerifications.createdAt))
-      .limit(1);
+    const latestOtpRecord = await AuthRepository.findLatestActiveOtp(
+      fullPhone,
+      OTP_PURPOSES.LOGIN,
+    );
 
     if (latestOtpRecord) {
       const createdAtTime = new Date(latestOtpRecord.createdAt).getTime();
@@ -283,7 +314,7 @@ export class AuthService {
       if (elapsed < cooldownMs) {
         const remainingSeconds = Math.ceil((cooldownMs - elapsed) / 1000);
         const error = new Error(
-          `Please wait ${remainingSeconds} second(s) before requesting a new OTP.`
+          `Please wait ${remainingSeconds} second(s) before requesting a new OTP.`,
         ) as AppError;
         error.statusCode = 429;
         error.code = "OTP_COOLDOWN_ACTIVE";
@@ -294,13 +325,13 @@ export class AuthService {
 
     // Generate a fresh 4-digit OTP
     const otpCode = generateOTP(OTP_CONFIG.LENGTH);
-    const codeHash = hashToken(otpCode);
+    const codeHash = AuthService.hashOtp(otpCode);
     const expiresAt = new Date(
-      now.getTime() + OTP_CONFIG.EXPIRY_MINUTES * 60 * 1000
+      now.getTime() + OTP_CONFIG.EXPIRY_MINUTES * 60 * 1000,
     );
 
     // Persist new OTP record
-    await db.insert(otpVerifications).values({
+    await AuthRepository.createOtp({
       identifier: fullPhone,
       purpose: OTP_PURPOSES.LOGIN,
       codeHash,
@@ -309,10 +340,10 @@ export class AuthService {
     });
 
     // Dispatch SMS
-    await sendSmsOTP({ phone: fullPhone, countryCode, otp: otpCode });
+    await sendSmsOTP({ phone: localPhone, countryCode, otp: otpCode });
 
     const responseData: ResendOtpResult = {
-      phone: fullPhone,
+      phone: localPhone,
       countryCode,
       purpose: OTP_PURPOSES.LOGIN,
       expiresIn: OTP_CONFIG.EXPIRY_MINUTES * 60,
@@ -327,9 +358,31 @@ export class AuthService {
     return responseData;
   }
 
-  /**
-   * Screen 2: Social Login (Google, Apple)
-   */
+  static async setUserLanguage({
+    userId,
+    language,
+  }: {
+    userId: string;
+    language: string;
+  }): Promise<{ userId: string; language: string }> {
+    if (!SUPPORTED_LANGUAGES.some((supported) => supported.code === language)) {
+      const error = new Error("Unsupported language") as AppError;
+      error.statusCode = 400;
+      error.code = "UNSUPPORTED_LANGUAGE";
+      throw error;
+    }
+
+    const user = await AuthRepository.findUserById(userId);
+    if (!user) {
+      const error = new Error("User not found") as AppError;
+      error.statusCode = 404;
+      error.code = "USER_NOT_FOUND";
+      throw error;
+    }
+
+    return { userId, language };
+  }
+
   static async socialAuth({
     provider,
     providerUserId,
@@ -339,89 +392,37 @@ export class AuthService {
   }: SocialAuthParams): Promise<AuthResult> {
     const email = providerEmail || `${provider}_${providerUserId}@oauth.auth`;
     const now = new Date();
-
-    const [existingUser] = await db
-      .select()
-      .from(users)
-      .where(eq(users.email, email));
-
-    let user: User;
-    let isNewUser = false;
-
-    if (!existingUser) {
-      isNewUser = true;
-      const [newUser] = await db
-        .insert(users)
-        .values({
+    const existingUser = await AuthRepository.findUserByEmail(email);
+    const isNewUser = !existingUser;
+    const user = existingUser
+      ? await AuthRepository.markUserLogin(existingUser.id, now)
+      : await AuthRepository.createUser({
           email,
           authProvider: provider,
-          role: "user",
-          status: "active",
           emailVerified: true,
           phoneVerified: false,
-          lastLoginAt: now,
-          lastActiveAt: now,
-        })
-        .returning();
-
-      user = newUser;
-    } else {
-      const [updatedUser] = await db
-        .update(users)
-        .set({
-          lastLoginAt: now,
-          lastActiveAt: now,
-          updatedAt: now,
-        })
-        .where(eq(users.id, existingUser.id))
-        .returning();
-
-      user = updatedUser;
-    }
-
-    const safeUser: SafeUser = {
-      id: user.id,
-      email: user.email,
-      phone: user.phone,
-      role: user.role,
-      status: user.status,
-      emailVerified: user.emailVerified,
-      phoneVerified: user.phoneVerified,
-      authProvider: user.authProvider,
-      lastLoginAt: user.lastLoginAt,
-      lastActiveAt: user.lastActiveAt,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-    };
-
-    // Create session in user_sessions
-    const sessionExpiry = new Date(
-      now.getTime() + 7 * 24 * 60 * 60 * 1000, // 7 days
+          status: "active",
+        });
+    const sessionId = randomUUID();
+    const tokens = generateTokens(
+      { id: user.id, phone: user.phone, role: user.role },
+      sessionId,
     );
 
     await AuthRepository.createSession({
       id: sessionId,
       userId: user.id,
       refreshTokenHash: AuthService.hashRefreshToken(tokens.refreshToken),
-      deviceInfo: userAgent,
+      userAgent,
       ipAddress,
-      expiresAt: sessionExpiry,
+      expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
     });
 
     return {
       isNewUser,
-      user: {
-        id: user.id,
-        userId: user.id,
-        phone: user.phone,
-        countryCode,
-        preferredLanguage: preferredLanguage || "en",
-        role: user.role,
-        isVerified: user.phoneVerified,
-        profileCompleted: false,
-        createdAt: user.createdAt,
-      },
+      user: AuthService.toSafeUser(user),
       tokens,
+      provider,
     };
   }
 

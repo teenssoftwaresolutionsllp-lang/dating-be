@@ -9,8 +9,8 @@ const phoneSchema = z
   .string()
   .trim()
   .transform((phone) => phone.replace(/[^0-9]/g, ""))
-  .refine((phone) => phone.length >= 7 && phone.length <= 15, {
-    message: "Invalid phone number. Please enter 7 to 15 digits.",
+  .refine((phone) => phone.length === 10, {
+    message: "Invalid phone number. Please enter exactly 10 digits.",
   });
 
 const countryCodeSchema = z
@@ -18,7 +18,10 @@ const countryCodeSchema = z
   .trim()
   .transform((countryCode) =>
     countryCode.startsWith("+") ? countryCode : `+${countryCode}`,
-  );
+  )
+  .refine((countryCode) => /^\+[1-9]\d{0,3}$/.test(countryCode), {
+    message: "Invalid country code.",
+  });
 
 const preferredLanguageSchema = z
   .string()

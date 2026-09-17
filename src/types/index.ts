@@ -215,12 +215,12 @@ export interface SwipeParams {
 export interface SwipeResult {
   direction: SwipeDirection;
   isMatch: boolean;
-  matchId?: number;
+  matchId?: string;
   targetUser?: Pick<SafeUser, "id" | "phone">;
 }
 
 export interface MatchRecord {
-  id: number;
+  id: string;
   userId: string;
   targetUserId: string;
   direction: SwipeDirection;
@@ -253,7 +253,7 @@ export interface SendMessageParams {
 }
 
 export interface MessageRecord {
-  id: number;
+  id: string;
   senderId: string;
   receiverId: string;
   content: string;
@@ -280,7 +280,7 @@ export interface ConversationSummary {
 }
 
 export interface DeleteMessageParams {
-  messageId: number;
+  messageId: string;
   userId: string;
 }
 

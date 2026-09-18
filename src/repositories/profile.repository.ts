@@ -1,4 +1,4 @@
-import { and, count, eq, inArray } from "drizzle-orm";
+import { and, count, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db/index";
 import {
   datingPreferences,
@@ -122,14 +122,16 @@ class ProfileRepository {
 
       if (profile) {
         const [languagesResult] = await transaction
-          .select({ count: count() })
+          .select({
+            count: sql<number>`cardinality(${profileLanguages.languageIds})`,
+          })
           .from(profileLanguages)
           .where(eq(profileLanguages.profileId, profile.id));
         const [interestsResult] = await transaction
           .select({ count: count() })
           .from(profileInterests)
           .where(eq(profileInterests.profileId, profile.id));
-        languageCount = Number(languagesResult.count);
+        languageCount = Number(languagesResult?.count ?? 0);
         interestCount = Number(interestsResult.count);
       }
 
@@ -314,15 +316,12 @@ class ProfileRepository {
       }
 
       await transaction
-        .delete(profileLanguages)
-        .where(eq(profileLanguages.profileId, profile.id));
-
-      await transaction.insert(profileLanguages).values(
-        languageIds.map((languageId) => ({
-          profileId: profile.id,
-          languageId,
-        })),
-      );
+        .insert(profileLanguages)
+        .values({ profileId: profile.id, languageIds })
+        .onConflictDoUpdate({
+          target: profileLanguages.profileId,
+          set: { languageIds },
+        });
 
       await transaction
         .update(users)
@@ -391,6 +390,91 @@ class ProfileRepository {
       .where(eq(profiles.userId, userId));
 
     return profile;
+  }
+
+  async findCompleteByUserId(userId: string) {
+    const profile = await this.findByUserId(userId);
+
+    if (!profile) {
+      return {
+        profile: null,
+        languages: [],
+        interests: [],
+        education: null,
+        kyc: null,
+        photos: [],
+        datingPreferences: null,
+      };
+    }
+
+    const [
+      selectedLanguages,
+      selectedInterests,
+      educationRecord,
+      kyc,
+      photos,
+      preferences,
+    ] = await Promise.all([
+      db
+        .select({ id: languages.id, name: languages.name })
+        .from(profileLanguages)
+        .innerJoin(
+          languages,
+          sql`${languages.id} = ANY(${profileLanguages.languageIds})`,
+        )
+        .where(eq(profileLanguages.profileId, profile.id)),
+      db
+        .select({
+          id: interests.id,
+          name: interests.name,
+          category: interests.category,
+        })
+        .from(profileInterests)
+        .innerJoin(interests, eq(profileInterests.interestId, interests.id))
+        .where(eq(profileInterests.profileId, profile.id)),
+      this.findEducationByUserId(userId),
+      db
+        .select({
+          documentType: kycVerifications.documentType,
+          status: kycVerifications.status,
+          submittedAt: kycVerifications.submittedAt,
+          verifiedAt: kycVerifications.verifiedAt,
+          rejectionReason: kycVerifications.rejectionReason,
+        })
+        .from(kycVerifications)
+        .where(eq(kycVerifications.userId, userId))
+        .then(([record]) => record ?? null),
+      db
+        .select({
+          id: profilePhotos.id,
+          url: profilePhotos.url,
+          displayOrder: profilePhotos.displayOrder,
+          isPrimary: profilePhotos.isPrimary,
+          verificationStatus: profilePhotos.verificationStatus,
+          moderationStatus: profilePhotos.moderationStatus,
+          moderationReason: profilePhotos.moderationReason,
+          width: profilePhotos.width,
+          height: profilePhotos.height,
+          createdAt: profilePhotos.createdAt,
+        })
+        .from(profilePhotos)
+        .where(eq(profilePhotos.userId, userId)),
+      db
+        .select()
+        .from(datingPreferences)
+        .where(eq(datingPreferences.userId, userId))
+        .then(([record]) => record ?? null),
+    ]);
+
+    return {
+      profile,
+      languages: selectedLanguages,
+      interests: selectedInterests,
+      education: educationRecord ?? null,
+      kyc,
+      photos,
+      datingPreferences: preferences,
+    };
   }
 
   async findEducationByUserId(userId: string): Promise<Education | undefined> {

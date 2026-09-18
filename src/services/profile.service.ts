@@ -141,6 +141,16 @@ class ProfileService {
     return (await ProfileRepository.findByUserId(userId)) ?? null;
   }
 
+  async getMyProfile(userId: string) {
+    const status = await ProfileRepository.findOnboardingStatus(userId);
+
+    if (!status) {
+      throw createNotFoundError("User not found");
+    }
+
+    return ProfileRepository.findCompleteByUserId(userId);
+  }
+
   async updateProfile(userId: string, values: ProfileUpdate): Promise<Profile> {
     const status = await ProfileRepository.findOnboardingStatus(userId);
 

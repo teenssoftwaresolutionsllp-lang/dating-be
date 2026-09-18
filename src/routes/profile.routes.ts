@@ -26,8 +26,15 @@ router.get(
   asyncHandler(ProfileController.getOnboardingStatus),
 );
 
-// Return the authenticated user's saved profile for pre-filling forms.
+// Return the authenticated user's core profile fields.
 router.get("/me", authenticate, asyncHandler(ProfileController.getProfile));
+
+// Return all saved onboarding data for the authenticated user's profile.
+router.get(
+  "/my-profile",
+  authenticate,
+  asyncHandler(ProfileController.getMyProfile),
+);
 
 // Create or update core profile fields such as name, birthday, gender, and height.
 router.patch(

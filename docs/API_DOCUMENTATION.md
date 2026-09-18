@@ -683,17 +683,18 @@ Expected response:
 }
 ```
 
-### 9.2 Get current profile
+### 9.2 Get complete profile
 
 ```http
-GET {{baseUrl}}/api/v1/profile/me
+GET {{baseUrl}}/api/v1/profile/my-profile
 ```
 
 Purpose:
 
-- loads saved profile data when the app opens
+- loads all saved onboarding data when the app opens
 - supports Back navigation and field pre-population
 - returns the profile owned by the authenticated user
+- does not return hashed KYC document numbers or internal file storage keys
 
 Expected response before profile creation:
 
@@ -703,7 +704,13 @@ Expected response before profile creation:
   "statusCode": 200,
   "message": "Profile retrieved successfully",
   "data": {
-    "profile": null
+    "profile": null,
+    "languages": [],
+    "interests": [],
+    "education": null,
+    "kyc": null,
+    "photos": [],
+    "datingPreferences": null
   }
 }
 ```
@@ -731,6 +738,36 @@ Expected response after saving data:
       "longitude": 88.3639,
       "relationshipStatus": "single",
       "bio": null
+    },
+    "languages": [{ "id": 1, "name": "English" }],
+    "interests": [{ "id": 2, "name": "Travel", "category": "lifestyle" }],
+    "education": {
+      "educationLevel": "bachelors",
+      "qualification": "B.Tech",
+      "profession": "Software Engineer"
+    },
+    "kyc": {
+      "documentType": "passport",
+      "status": "verified",
+      "submittedAt": "2026-09-18T10:00:00.000Z",
+      "verifiedAt": "2026-09-18T10:00:00.000Z",
+      "rejectionReason": null
+    },
+    "photos": [
+      {
+        "id": "photo-uuid",
+        "url": "https://res.cloudinary.com/example/image/upload/profile.jpg",
+        "displayOrder": 0,
+        "isPrimary": true,
+        "verificationStatus": "pending",
+        "moderationStatus": "pending"
+      }
+    ],
+    "datingPreferences": {
+      "minAge": 24,
+      "maxAge": 32,
+      "maxDistanceKm": 50,
+      "preferredGenders": ["female"]
     }
   }
 }

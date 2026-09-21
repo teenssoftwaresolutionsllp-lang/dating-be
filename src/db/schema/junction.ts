@@ -9,7 +9,12 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { profiles, users } from "./core";
-import { languages, interests, subscriptionPlans, subscriptionFeatures } from "./independent";
+import {
+  languages,
+  interests,
+  subscriptionPlans,
+  subscriptionFeatures,
+} from "./independent";
 import { conversations, messages } from "./dependent";
 
 /**
@@ -20,22 +25,22 @@ import { conversations, messages } from "./dependent";
 
 /**
  * profile_languages
- * Associative table linking candidate profiles to languages spoken.
+ * Stores all selected language IDs for a user in one row.
  */
 export const profileLanguages = pgTable(
   "profile_languages",
   {
     profileId: uuid("profile_id")
-      .notNull()
+      .primaryKey()
       .references(() => profiles.id, { onDelete: "cascade" }),
-    languageId: integer("language_id")
-      .notNull()
-      .references(() => languages.id, { onDelete: "cascade" }),
+    languageIds: integer("language_ids").array().notNull(),
   },
   (table) => [
-    primaryKey({ columns: [table.profileId, table.languageId] }),
-    index("profile_languages_language_id_idx").on(table.languageId),
-  ]
+    index("profile_languages_language_ids_gin_idx").using(
+      "gin",
+      table.languageIds,
+    ),
+  ],
 );
 
 export type ProfileLanguage = typeof profileLanguages.$inferSelect;
@@ -58,7 +63,7 @@ export const profileInterests = pgTable(
   (table) => [
     primaryKey({ columns: [table.profileId, table.interestId] }),
     index("profile_interests_interest_id_idx").on(table.interestId),
-  ]
+  ],
 );
 
 export type ProfileInterest = typeof profileInterests.$inferSelect;
@@ -84,7 +89,7 @@ export const conversationMembers = pgTable(
   (table) => [
     primaryKey({ columns: [table.conversationId, table.userId] }),
     index("conv_members_user_id_idx").on(table.userId),
-  ]
+  ],
 );
 
 export type ConversationMember = typeof conversationMembers.$inferSelect;
@@ -103,14 +108,12 @@ export const messageReads = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    readAt: timestamp("read_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
+    readAt: timestamp("read_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
     primaryKey({ columns: [table.messageId, table.userId] }),
     index("message_reads_user_read_at_idx").on(table.userId, table.readAt),
-  ]
+  ],
 );
 
 export type MessageRead = typeof messageReads.$inferSelect;
@@ -135,9 +138,9 @@ export const planFeatures = pgTable(
     primaryKey({ columns: [table.planId, table.featureId] }),
     check(
       "plan_features_limit_value_check",
-      sql`${table.limitValue} IS NULL OR ${table.limitValue} >= 0`
+      sql`${table.limitValue} IS NULL OR ${table.limitValue} >= 0`,
     ),
-  ]
+  ],
 );
 
 export type PlanFeature = typeof planFeatures.$inferSelect;

@@ -1,0 +1,1 @@
+ALTER TABLE "dating_preferences" ADD COLUMN "preferred_interest_ids" jsonb;

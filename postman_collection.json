@@ -89,7 +89,34 @@
           }
         },
         {
-          "name": "2. Google Social Login",
+          "name": "2. Resend OTP (after 30s cooldown)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"countryCode\": \"+91\",\n  \"phone\": \"9876543210\",\n  \"preferredLanguage\": \"te\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/resend-otp",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "resend-otp"]
+            },
+            "description": "Resend a new 4-digit OTP. Returns 429 with 'remainingSeconds' if the 30-second cooldown has not elapsed. Returns 200 with a fresh 10-minute expiry (devOtp visible in non-production)."
+          }
+        },
+        {
+          "name": "3. Google Social Login",
           "request": {
             "method": "POST",
             "header": [

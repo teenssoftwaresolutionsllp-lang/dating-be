@@ -1,7 +1,7 @@
 {
   "info": {
-    "name": "Dating App - Screen 1, 2 & 3 Authentication APIs",
-    "description": "Postman Collection for Dating App: Language Selection -> Mobile Number -> OTP Verification Flow",
+    "name": "Dating App - Matches, Discovery & Messaging APIs",
+    "description": "Production Postman Collection for Dating App Discovery Feed, Swiping (Like/Pass/Superlike), Mutual Matches with Voluntary Chat, Likes Tab, Safety (Block/Report), and Chat Messaging.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -11,120 +11,64 @@
       "type": "string"
     },
     {
-      "key": "accessToken",
+      "key": "targetUserId",
       "value": "",
       "type": "string"
     },
     {
-      "key": "refreshToken",
+      "key": "matchId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "messageId",
       "value": "",
       "type": "string"
     }
   ],
   "item": [
     {
-      "name": "Screen 1: Language Selection",
+      "name": "1. Health & Status",
       "item": [
         {
-          "name": "1. Get Supported Display Languages",
+          "name": "Health Check",
           "request": {
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/auth/languages",
+              "raw": "{{baseUrl}}/api/health",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "auth", "languages"]
+              "path": ["api", "health"]
             }
           }
         },
         {
-          "name": "2. Update User Language (Authenticated)",
+          "name": "Root Status",
           "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"language\": \"te\"\n}"
-            },
+            "method": "GET",
+            "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/auth/language",
+              "raw": "{{baseUrl}}/",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "auth", "language"]
+              "path": [""]
             }
           }
         }
       ]
     },
     {
-      "name": "Screen 2: Mobile Number & Login",
+      "name": "2. Discovery Feed (Explore / People Tab)",
       "item": [
         {
-          "name": "1. Send Mobile OTP (Login button)",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"countryCode\": \"+91\",\n  \"phone\": \"9876543210\",\n  \"preferredLanguage\": \"te\"\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/auth/send-otp",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "auth", "send-otp"]
-            }
-          }
-        },
-        {
-          "name": "2. Google Social Login",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"providerUserId\": \"google_user_12345\",\n  \"preferredLanguage\": \"te\"\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/auth/google",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "auth", "google"]
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "Screen 3: OTP Verification",
-      "item": [
-        {
-          "name": "1. Verify OTP (Verify button)",
+          "name": "Get Discovery Feed (Candidate Cards + Trust Score %)",
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
                   "var jsonData = pm.response.json();",
-                  "if (jsonData.data && jsonData.data.tokens) {",
-                  "    pm.collectionVariables.set('accessToken', jsonData.data.tokens.accessToken);",
-                  "    pm.collectionVariables.set('refreshToken', jsonData.data.tokens.refreshToken);",
+                  "if (jsonData.data && jsonData.data.length > 0) {",
+                  "    pm.collectionVariables.set('targetUserId', jsonData.data[0].userId);",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -132,48 +76,192 @@
             }
           ],
           "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"countryCode\": \"+91\",\n  \"phone\": \"9876543210\",\n  \"otp\": \"1234\",\n  \"preferredLanguage\": \"te\"\n}"
-            },
+            "method": "GET",
+            "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/auth/verify-otp",
+              "raw": "{{baseUrl}}/api/v1/matches/feed?page=1&limit=10",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "auth", "verify-otp"]
+              "path": ["api", "v1", "matches", "feed"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
             }
           }
         }
       ]
     },
     {
-      "name": "Session & Profile",
+      "name": "3. Swipe Engine",
       "item": [
         {
-          "name": "Get Profile (/me)",
+          "name": "Swipe Like (❤️ Pink Heart)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"targetUserId\": \"{{targetUserId}}\",\n  \"direction\": \"like\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/matches/swipe",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "matches", "swipe"]
+            }
+          }
+        },
+        {
+          "name": "Swipe Pass (❌ Red Cross)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"targetUserId\": \"{{targetUserId}}\",\n  \"direction\": \"dislike\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/matches/swipe",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "matches", "swipe"]
+            }
+          }
+        },
+        {
+          "name": "Swipe Super Like (💬 Blue Chat Button)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"targetUserId\": \"{{targetUserId}}\",\n  \"direction\": \"superlike\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/matches/swipe",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "matches", "swipe"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Matches Tab & Voluntary Chat",
+      "item": [
+        {
+          "name": "Get Mutual Matches",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.length > 0) {",
+                  "    pm.collectionVariables.set('matchId', jsonData.data[0].matchId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}"
-              }
-            ],
+            "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/auth/me",
+              "raw": "{{baseUrl}}/api/v1/matches?page=1&limit=20",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "auth", "me"]
+              "path": ["api", "v1", "matches"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
             }
           }
         },
         {
-          "name": "Refresh Token",
+          "name": "Start Chat Voluntarily with Match",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/matches/{{matchId}}/chat",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "matches", "{{matchId}}", "chat"]
+            }
+          }
+        },
+        {
+          "name": "Unmatch User",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/matches/{{matchId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "matches", "{{matchId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Likes Tab (Who Liked Me)",
+      "item": [
+        {
+          "name": "Get Likes Received",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/matches/likes?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "matches", "likes"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Safety & Moderation",
+      "item": [
+        {
+          "name": "Block User",
           "request": {
             "method": "POST",
             "header": [
@@ -184,37 +272,105 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+              "raw": "{\n  \"targetUserId\": \"{{targetUserId}}\"\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/auth/refresh-token",
+              "raw": "{{baseUrl}}/api/v1/matches/block",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "auth", "refresh-token"]
+              "path": ["api", "v1", "matches", "block"]
             }
           }
         },
         {
-          "name": "Logout",
+          "name": "Report User (Report & Block Profile)",
           "request": {
             "method": "POST",
             "header": [
               {
                 "key": "Content-Type",
                 "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}"
               }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+              "raw": "{\n  \"targetUserId\": \"{{targetUserId}}\",\n  \"reason\": \"fake_profile\",\n  \"description\": \"Suspicious profile behavior\"\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/api/v1/auth/logout",
+              "raw": "{{baseUrl}}/api/v1/matches/report",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "auth", "logout"]
+              "path": ["api", "v1", "matches", "report"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Chat & Messaging",
+      "item": [
+        {
+          "name": "Get All Conversations (Inbox)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "messages"]
+            }
+          }
+        },
+        {
+          "name": "Send Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiverId\": \"{{targetUserId}}\",\n  \"content\": \"Hey! Loved your profile ✨\",\n  \"messageType\": \"text\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "messages"]
+            }
+          }
+        },
+        {
+          "name": "Get Conversation Thread",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/messages/{{targetUserId}}?page=1&limit=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "messages", "{{targetUserId}}"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Message",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/messages/delete/{{messageId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "messages", "delete", "{{messageId}}"]
             }
           }
         }

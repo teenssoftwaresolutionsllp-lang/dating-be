@@ -1,12 +1,14 @@
 import { Router } from "express";
 import MatchController from "../controllers/match.controller";
-import { authenticate } from "../middleware/auth.middleware";
 import { asyncHandler } from "../middleware/error.middleware";
 
 const router = Router();
 
-// All match routes require authentication
-router.use(authenticate);
+// =================================================================
+// Discovery Feed (Explore / People tab cards)
+// =================================================================
+// GET /api/v1/matches/feed — Get candidate cards with Trust Score %
+router.get("/feed", asyncHandler(MatchController.getDiscoveryFeed));
 
 // =================================================================
 // Swipe Actions
@@ -15,18 +17,30 @@ router.use(authenticate);
 router.post("/swipe", asyncHandler(MatchController.swipe));
 
 // =================================================================
-// Matches
+// Matches Tab
 // =================================================================
-// GET /api/v1/matches — Get all mutual matches (paginated)
+// GET /api/v1/matches — Get all mutual matches
 router.get("/", asyncHandler(MatchController.getMatches));
 
-// DELETE /api/v1/matches/:matchedUserId — Unmatch a user
-router.delete("/:matchedUserId", asyncHandler(MatchController.unmatch));
+// POST /api/v1/matches/:matchId/chat — Voluntarily start chat with a match
+router.post("/:matchId/chat", asyncHandler(MatchController.startChat));
+
+// DELETE /api/v1/matches/:matchId — Unmatch a user
+router.delete("/:matchId", asyncHandler(MatchController.unmatch));
 
 // =================================================================
-// Swipe History
+// Likes Tab (Who liked me)
 // =================================================================
-// GET /api/v1/matches/history — Get swipe history (optional ?direction=like|dislike|superlike)
-router.get("/history", asyncHandler(MatchController.getSwipeHistory));
+// GET /api/v1/matches/likes — Get list of admirers who liked current user
+router.get("/likes", asyncHandler(MatchController.getLikesReceived));
+
+// =================================================================
+// Safety (Block & Report)
+// =================================================================
+// POST /api/v1/matches/block — Block a user
+router.post("/block", asyncHandler(MatchController.blockUser));
+
+// POST /api/v1/matches/report — Report a user
+router.post("/report", asyncHandler(MatchController.reportUser));
 
 export default router;

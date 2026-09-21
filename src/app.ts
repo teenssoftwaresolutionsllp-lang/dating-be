@@ -5,12 +5,8 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 
-import authRoutes from "./routes/auth.routes";
-import profileRoutes from "./routes/profile.routes";
 import matchRoutes from "./routes/match.routes";
 import messageRoutes from "./routes/message.routes";
-import userRoutes from "./routes/user.routes";
-import adminRoutes from "./routes/admin.routes";
 import { notFoundHandler, errorHandler } from "./middleware/error.middleware";
 
 const app: Express = express();
@@ -30,7 +26,7 @@ app.get("/", (_req: Request, res: Response) => {
     success: true,
     message: "Dating App Backend is running 🚀",
     version: "1.0.0",
-    docs: "/api/v1/auth",
+    docs: "/api/v1/matches",
   });
 });
 
@@ -49,24 +45,11 @@ app.get("/favicon.ico", (_req: Request, res: Response) => {
 // =================================================================
 // API Routes (v1)
 // =================================================================
-// Authentication — Mounted under /api/v1/auth and /auth (legacy)
-app.use("/api/v1/auth", authRoutes);
-app.use("/auth", authRoutes);
-
-// User account management
-app.use("/api/v1/users", userRoutes);
-
-// Profile management
-app.use("/api/v1/profile", profileRoutes);
-
-// Match / Swipe
+// Matches, Discovery & Swiping
 app.use("/api/v1/matches", matchRoutes);
 
-// Messaging
+// Messaging & Chat
 app.use("/api/v1/messages", messageRoutes);
-
-// Admin panel (requires admin role)
-app.use("/api/v1/admin", adminRoutes);
 
 // =================================================================
 // Error Handling

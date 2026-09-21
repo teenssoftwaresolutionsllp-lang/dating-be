@@ -629,6 +629,20 @@ Soft delete is enabled for user-facing data to support restoration and complianc
 | **Payments & Monetization** | `src/db/schema/payments.ts` | 4 tables |
 | **Total Production Tables** | **All 5 Schema Files** | **35 Tables** |
 
+
+
+
+# 1. Generate SQL migration files from your TypeScript schemas
+npm run db:generate
+# 2. Apply the generated migrations directly to your PostgreSQL database
+npm run db:migrate
+# 3. Seed initial master data (languages, interests, tiers, sample profiles, matches)
+npm run db:seed
+# 4. (Optional) Open the visual Drizzle Studio database browser
+npm run db:studio
+# 5. (Optional / Development only) Wipe and reset the database schema
+npm run db:reset
+
 ---
 
 *Generated for Dating Application Backend — Production Database Layer.*

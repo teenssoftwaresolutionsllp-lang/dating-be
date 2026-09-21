@@ -1,8 +1,6 @@
 import {
-  bigint,
   boolean,
   index,
-  integer,
   pgTable,
   smallint,
   text,
@@ -26,22 +24,12 @@ export const profilePhotos = pgTable(
     verificationStatus: varchar("verification_status", { length: 20 })
       .notNull()
       .default("pending"),
-    moderationStatus: varchar("moderation_status", { length: 20 })
-      .notNull()
-      .default("pending"),
-    moderationReason: text("moderation_reason"),
-    moderatedAt: timestamp("moderated_at", { withTimezone: true }),
-    mimeType: varchar("mime_type", { length: 50 }).notNull().default("image/jpeg"),
-    fileSizeBytes: bigint("file_size_bytes", { mode: "number" }).notNull().default(0),
-    width: integer("width"),
-    height: integer("height"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
-    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [index("profile_photos_user_id_idx").on(table.userId)],
 );

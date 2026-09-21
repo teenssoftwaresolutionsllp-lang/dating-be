@@ -19,7 +19,6 @@ export const swipes = pgTable(
       .notNull()
       .references(() => users.user_id, { onDelete: "cascade" }),
     action: varchar("action", { length: 20 }).notNull(),
-    source: varchar("source", { length: 30 }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

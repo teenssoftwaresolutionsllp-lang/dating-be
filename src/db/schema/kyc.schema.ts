@@ -11,12 +11,8 @@ export const kycVerifications = pgTable("kyc_verifications", {
   documentType: varchar("document_type", { length: 30 }).notNull(),
   documentNumberHash: text("document_number_hash").notNull().default("aadhar"),
   status: varchar("status", { length: 20 }).notNull().default("pending"),
-  provider: varchar("provider", { length: 50 }),
-  providerReference: varchar("provider_reference", { length: 150 }),
-  submittedAt: timestamp("submitted_at", { withTimezone: true }).defaultNow(),
   verifiedAt: timestamp("verified_at", { withTimezone: true }),
   rejectionReason: text("rejection_reason"),
-  reviewedBy: uuid("reviewed_by"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

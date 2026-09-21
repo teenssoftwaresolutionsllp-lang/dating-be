@@ -1,7 +1,6 @@
 import {
   boolean,
   pgTable,
-  text,
   timestamp,
   uuid,
   varchar,
@@ -12,7 +11,6 @@ export const users = pgTable("users", {
   user_id: uuid("user_id").defaultRandom().primaryKey(),
   email: varchar("email", { length: 255 }).unique(),
   phone: varchar("phone", { length: 20 }).unique(),
-  passwordHash: text("password_hash"),
   role: varchar("role", { length: 20 }).notNull().default("user"),
   status: varchar("status", { length: 20 }).notNull().default("active"),
   onboardingStep: varchar("onboarding_step", { length: 30 })
@@ -21,7 +19,6 @@ export const users = pgTable("users", {
   onboardingCompletedAt: timestamp("onboarding_completed_at", {
     withTimezone: true,
   }),
-  emailVerified: boolean("email_verified").notNull().default(false),
   phoneVerified: boolean("phone_verified").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

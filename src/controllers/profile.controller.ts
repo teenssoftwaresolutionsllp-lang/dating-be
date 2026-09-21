@@ -48,6 +48,26 @@ export class ProfileController {
     });
   }
 
+  static async getMyProfile(req: Request, res: Response): Promise<Response> {
+    const userId = getUserId(req);
+
+    if (!userId) {
+      return ApiResponse.error(res, {
+        statusCode: 401,
+        message: "Unauthorized: User not authenticated",
+        code: "UNAUTHORIZED",
+      });
+    }
+
+    const profile = await ProfileService.getMyProfile(userId);
+
+    return ApiResponse.success(res, {
+      statusCode: 200,
+      message: "Complete profile retrieved successfully",
+      data: profile,
+    });
+  }
+
   static async updateProfile(req: Request, res: Response): Promise<Response> {
     const userId = getUserId(req);
 

@@ -202,7 +202,9 @@ async function seed() {
     // ------------------------------------------------------------------------
     // STEP 2: CORE IDENTITY & USERS (Root User Entities)
     // ------------------------------------------------------------------------
-    console.log("👥 2/5 Seeding core users, profiles, settings, and devices...");
+    console.log(
+      "👥 2/5 Seeding core users, profiles, settings, and devices...",
+    );
 
     const passwordHash = await bcrypt.hash("Password@123", 10);
 
@@ -269,7 +271,7 @@ async function seed() {
         .returning();
 
     const candidateUsers = [userAarav, userAnanya, userRohan, userPriya].filter(
-      Boolean
+      Boolean,
     );
 
     // Seed Settings & Devices for users
@@ -396,10 +398,12 @@ async function seed() {
     if (profileAarav && insertedLanguages.length && insertedInterests.length) {
       await db
         .insert(profileLanguages)
-        .values([
-          { profileId: profileAarav.id, languageId: insertedLanguages[0].id },
-          { profileId: profileAarav.id, languageId: insertedLanguages[1].id },
-        ])
+        .values({
+          profileId: profileAarav.id,
+          languageIds: insertedLanguages
+            .slice(0, 2)
+            .map((language) => language.id),
+        })
         .onConflictDoNothing();
 
       await db
@@ -414,10 +418,12 @@ async function seed() {
     if (profileAnanya && insertedLanguages.length && insertedInterests.length) {
       await db
         .insert(profileLanguages)
-        .values([
-          { profileId: profileAnanya.id, languageId: insertedLanguages[0].id },
-          { profileId: profileAnanya.id, languageId: insertedLanguages[1].id },
-        ])
+        .values({
+          profileId: profileAnanya.id,
+          languageIds: insertedLanguages
+            .slice(0, 2)
+            .map((language) => language.id),
+        })
         .onConflictDoNothing();
 
       await db
@@ -536,7 +542,9 @@ async function seed() {
     // ------------------------------------------------------------------------
     // STEP 5: SWIPES, MATCHES, CHAT & MONETIZATION
     // ------------------------------------------------------------------------
-    console.log("💬 5/5 Seeding mutual match, conversation, and subscription...");
+    console.log(
+      "💬 5/5 Seeding mutual match, conversation, and subscription...",
+    );
 
     if (userAarav && userAnanya) {
       // Swipes

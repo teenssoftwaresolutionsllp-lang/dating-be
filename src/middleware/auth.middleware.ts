@@ -1,8 +1,10 @@
 import type { Request, Response, NextFunction } from "express";
 import { verifyAccessToken } from "../utils/jwt";
-import AuthRepository from "../repositories/auth.repository";
+import { db } from "../db/index";
+import { users } from "../db/schema";
+import { eq } from "drizzle-orm";
 import ApiResponse from "../utils/response";
-import type { TokenPayload } from "../types/index";
+import type { TokenPayload, SafeUser } from "../types/index";
 
 /**
  * Authenticate JWT Access Token
@@ -10,7 +12,7 @@ import type { TokenPayload } from "../types/index";
 export const authenticate = async (
   req: Request,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) => {
   try {
     const authHeader = req.headers.authorization;
@@ -35,29 +37,26 @@ export const authenticate = async (
 
     const decoded = verifyAccessToken(token);
 
-    if (!decoded.sessionId) {
-      return ApiResponse.error(res, {
-        statusCode: 401,
-        message: "Access token is not linked to an active session",
-        code: "INVALID_SESSION",
-      });
-    }
+    // Verify user exists and is active in database
+    const [user] = await db
+      .select({
+        id: users.id,
+        email: users.email,
+        phone: users.phone,
+        role: users.role,
+        status: users.status,
+        emailVerified: users.emailVerified,
+        phoneVerified: users.phoneVerified,
+        authProvider: users.authProvider,
+        lastLoginAt: users.lastLoginAt,
+        lastActiveAt: users.lastActiveAt,
+        createdAt: users.createdAt,
+        updatedAt: users.updatedAt,
+      })
+      .from(users)
+      .where(eq(users.id, decoded.id));
 
-    const session = await AuthRepository.findActiveSessionById(
-      decoded.sessionId,
-    );
-
-    if (!session || new Date(session.expiresAt).getTime() <= Date.now()) {
-      return ApiResponse.error(res, {
-        statusCode: 401,
-        message: "Session has been revoked or expired. Please login again.",
-        code: "SESSION_REVOKED",
-      });
-    }
-
-    const user = await AuthRepository.findUserById(session.userId);
-
-    if (!user || user.user_id !== decoded.id) {
+    if (!user) {
       return ApiResponse.error(res, {
         statusCode: 401,
         message: "User account not found or deleted",
@@ -73,16 +72,7 @@ export const authenticate = async (
       });
     }
 
-    req.user = {
-      id: user.user_id,
-      userId: user.user_id,
-      phone: user.phone,
-      countryCode: "+1",
-      preferredLanguage: "en",
-      role: user.role,
-      isVerified: user.phoneVerified,
-      profileCompleted: false,
-    };
+    req.user = user as SafeUser;
     return next();
   } catch (error: unknown) {
     const err = error as { name?: string };
@@ -101,14 +91,14 @@ export const authenticate = async (
     });
   }
 };
-//test pending
+
 /**
  * Optional Authentication (Attaches req.user if valid token present)
  */
 export const optionalAuth = async (
   req: Request,
   _res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) => {
   try {
     const authHeader = req.headers.authorization;
@@ -116,21 +106,28 @@ export const optionalAuth = async (
     if (authHeader && authHeader.startsWith("Bearer ")) {
       const token = authHeader.split(" ")[1];
       if (token) {
-        const decoded = verifyAccessToken(token) as unknown as TokenPayload;
+        const decoded = verifyAccessToken(token) as TokenPayload;
 
-        const user = await AuthRepository.findUserById(decoded.id);
+        const [user] = await db
+          .select({
+            id: users.id,
+            email: users.email,
+            phone: users.phone,
+            role: users.role,
+            status: users.status,
+            emailVerified: users.emailVerified,
+            phoneVerified: users.phoneVerified,
+            authProvider: users.authProvider,
+            lastLoginAt: users.lastLoginAt,
+            lastActiveAt: users.lastActiveAt,
+            createdAt: users.createdAt,
+            updatedAt: users.updatedAt,
+          })
+          .from(users)
+          .where(eq(users.id, decoded.id));
 
         if (user && user.status === "active") {
-          req.user = {
-            id: user.user_id,
-            userId: user.user_id,
-            phone: user.phone,
-            countryCode: "+1",
-            preferredLanguage: "en",
-            role: user.role,
-            isVerified: user.phoneVerified,
-            profileCompleted: false,
-          };
+          req.user = user as SafeUser;
         }
       }
     }
@@ -147,7 +144,7 @@ export const optionalAuth = async (
 export const requireAdmin = (
   req: Request,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) => {
   if (!req.user || req.user.role !== "admin") {
     return ApiResponse.error(res, {

@@ -1,1 +1,0 @@
-ALTER TABLE "otp_verifications" ADD COLUMN "firebase_uid" varchar(128);

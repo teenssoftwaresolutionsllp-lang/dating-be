@@ -1,29 +1,41 @@
 import type { Request } from "express";
-import type { users } from "../db/schema/users.schema";
-// import type { otpVerifications } from "../db/schema/otp-verifications";
-// import type { userSessions } from "../db/schema/user-sessions";
+import type { users, otpVerifications, userSessions } from "../db/schema";
 
 // Database Inferred Models
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 
-// export type OtpVerification = typeof otpVerifications.$inferSelect;
-// export type NewOtpVerification = typeof otpVerifications.$inferInsert;
+export type OtpVerification = typeof otpVerifications.$inferSelect;
+export type NewOtpVerification = typeof otpVerifications.$inferInsert;
 
-// export type UserSession = typeof userSessions.$inferSelect;
-// export type NewUserSession = typeof userSessions.$inferInsert;
+export type UserSession = typeof userSessions.$inferSelect;
+export type NewUserSession = typeof userSessions.$inferInsert;
 
-// Safe user data returned by authenticated endpoints.
-export interface SafeUser {
+export interface SocialAccount {
   id: string;
   userId: string;
-  phone: string | null;
-  countryCode: string;
-  preferredLanguage: string;
+  provider: string;
+  providerUserId: string;
+}
+export type NewSocialAccount = Partial<SocialAccount>;
+
+// Safe User (sanitized payload without sensitive password hash)
+export interface SafeUser {
+  id: string;
+  email: string;
+  phone?: string | null;
+  countryCode?: string;
+  preferredLanguage?: string;
   role: string;
-  isVerified: boolean;
+  status: string;
+  isVerified?: boolean;
   isActive?: boolean;
-  profileCompleted: boolean;
+  emailVerified: boolean;
+  phoneVerified: boolean;
+  authProvider: string;
+  profileCompleted?: boolean;
+  lastLoginAt?: Date | null;
+  lastActiveAt?: Date | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -40,6 +52,7 @@ export interface SupportedLanguage {
 export interface TokenPayload {
   id: string;
   phone?: string | null;
+  email?: string | null;
   role: string;
   [key: string]: unknown;
 }
@@ -89,6 +102,15 @@ export interface AuthResult {
   tokens: TokensResponse;
 }
 
+export interface SocialAuthParams {
+  provider: string;
+  providerUserId: string;
+  providerEmail?: string;
+  preferredLanguage?: string;
+  userAgent?: string | null;
+  ipAddress?: string | null;
+}
+
 export interface RefreshTokenParams {
   refreshToken: string;
   userAgent?: string | null;
@@ -98,6 +120,11 @@ export interface RefreshTokenParams {
 export interface LogoutParams {
   refreshToken?: string;
   userId?: string;
+}
+
+export interface SetLanguageParams {
+  userId: string;
+  language: string;
 }
 
 // API Response Structures
@@ -206,12 +233,12 @@ export interface SwipeParams {
 export interface SwipeResult {
   direction: SwipeDirection;
   isMatch: boolean;
-  matchId?: number;
+  matchId?: string;
   targetUser?: Pick<SafeUser, "id" | "phone">;
 }
 
 export interface MatchRecord {
-  id: number;
+  id: string;
   userId: string;
   targetUserId: string;
   direction: SwipeDirection;
@@ -244,7 +271,7 @@ export interface SendMessageParams {
 }
 
 export interface MessageRecord {
-  id: number;
+  id: string;
   senderId: string;
   receiverId: string;
   content: string;
@@ -271,7 +298,7 @@ export interface ConversationSummary {
 }
 
 export interface DeleteMessageParams {
-  messageId: number;
+  messageId: string;
   userId: string;
 }
 
@@ -287,6 +314,7 @@ export interface AdminUserListParams {
 }
 
 export interface AdminUserRecord extends SafeUser {
+  email: string;
   isActive?: boolean;
   createdAt?: Date;
 }

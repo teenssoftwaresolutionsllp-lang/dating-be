@@ -310,7 +310,9 @@ async function seed() {
     const userMap = new Map<string, typeof users.$inferSelect>();
     const allDbUsers = await db.select().from(users);
     for (const u of allDbUsers) {
-      userMap.set(u.email, u);
+      if (u.email) {
+        userMap.set(u.email, u);
+      }
     }
 
     const uAdmin = userMap.get("admin@datingapp.com")!;
@@ -330,6 +332,9 @@ async function seed() {
     const deviceMap = new Map<string, string>(); // userId -> deviceId
 
     for (const u of userList) {
+      const email = u.email ?? "";
+      const phone = u.phone ?? "";
+
       // User Settings
       await db
         .insert(userSettings)
@@ -361,10 +366,10 @@ async function seed() {
         .insert(userDevices)
         .values({
           userId: u.id,
-          deviceToken: `fcm_device_token_${u.email.split("@")[0]}_2026_xyz`,
-          platform: u.email.includes("ammu") || u.email.includes("priya") ? "ios" : "android",
+          deviceToken: `fcm_device_token_${email.split("@")[0] || "user"}_2026_xyz`,
+          platform: email.includes("ammu") || email.includes("priya") ? "ios" : "android",
           appVersion: "1.0.0",
-          osVersion: u.email.includes("ammu") || u.email.includes("priya") ? "iOS 18.2" : "Android 15",
+          osVersion: email.includes("ammu") || email.includes("priya") ? "iOS 18.2" : "Android 15",
           lastActiveAt: new Date(),
         })
         .onConflictDoNothing()
@@ -380,8 +385,8 @@ async function seed() {
         .values({
           userId: u.id,
           deviceId: dev?.id || null,
-          refreshTokenHash: `refresh_hash_${u.email.split("@")[0]}_token`,
-          deviceInfo: u.email.includes("ammu") ? "iPhone 16 Pro" : "Pixel 9 Pro",
+          refreshTokenHash: `refresh_hash_${email.split("@")[0] || "user"}_token`,
+          deviceInfo: email.includes("ammu") ? "iPhone 16 Pro" : "Pixel 9 Pro",
           ipAddress: "127.0.0.1",
           userAgent: "DatingApp/1.0.0 Mobile",
           expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
@@ -395,14 +400,14 @@ async function seed() {
         .values([
           {
             userId: u.id,
-            email: u.email,
+            email,
             success: true,
             ipAddress: "127.0.0.1",
             userAgent: "DatingApp/1.0.0 Mobile",
           },
           {
             userId: u.id,
-            email: u.email,
+            email,
             success: false,
             ipAddress: "127.0.0.1",
             userAgent: "DatingApp/1.0.0 Mobile",
@@ -416,9 +421,9 @@ async function seed() {
         .insert(otpVerifications)
         .values({
           userId: u.id,
-          identifier: u.phone || u.email,
+          identifier: phone || email,
           purpose: "phone_verification",
-          codeHash: `sha256_mock_otp_${u.email.split("@")[0]}`,
+          codeHash: `sha256_mock_otp_${email.split("@")[0] || "user"}`,
           attempts: 1,
           expiresAt: new Date(Date.now() + 10 * 60 * 1000),
           verifiedAt: new Date(),
@@ -430,7 +435,7 @@ async function seed() {
         .insert(passwordResetTokens)
         .values({
           userId: u.id,
-          tokenHash: `reset_token_hash_${u.email.split("@")[0]}_mock`,
+          tokenHash: `reset_token_hash_${email.split("@")[0] || "user"}_mock`,
           expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
         })
         .onConflictDoNothing();
@@ -450,6 +455,7 @@ async function seed() {
         name: "System Admin",
         dateOfBirth: "1990-01-01",
         gender: "other",
+        religion: "Open to all",
         heightCm: 175,
         bio: "Platform Administrator & Trust & Safety Moderator.",
         relationshipStatus: "Single",
@@ -465,6 +471,7 @@ async function seed() {
         name: "Aarav Sharma",
         dateOfBirth: "1997-04-15",
         gender: "male",
+        religion: "Hindu",
         heightCm: 180,
         bio: "Software Architect & Weekend trekker. Searching for good conversations, indie music, and great filter coffee ☕",
         relationshipStatus: "Single",
@@ -480,6 +487,7 @@ async function seed() {
         name: "Ammu",
         dateOfBirth: "2003-02-14",
         gender: "female",
+        religion: "Hindu",
         heightCm: 168, // 168 cm = 5.6 fts
         bio: "Looking for good vibes, genuine conversations, and a real connection. Let's explore cozy cafes and talk about art ✨",
         relationshipStatus: "Single",
@@ -495,6 +503,7 @@ async function seed() {
         name: "Ananya Verma",
         dateOfBirth: "1998-08-22",
         gender: "female",
+        religion: "Hindu",
         heightCm: 165,
         bio: "UI/UX Designer. Obsessed with indie cinema, matcha lattes, and rooftop sunsets 🌅",
         relationshipStatus: "Single",
@@ -510,6 +519,7 @@ async function seed() {
         name: "Rohan Mehta",
         dateOfBirth: "1995-11-03",
         gender: "male",
+        religion: "Jain",
         heightCm: 175,
         bio: "Product Manager in Fintech. Love marathon running, podcasts, and discovering hidden cocktail bars 🍸",
         relationshipStatus: "Single",
@@ -525,6 +535,7 @@ async function seed() {
         name: "Priya Nair",
         dateOfBirth: "1999-01-19",
         gender: "female",
+        religion: "Hindu",
         heightCm: 168,
         bio: "Architectural photographer. Dog mom to a golden retriever named Bruno 🐾",
         relationshipStatus: "Single",
@@ -540,6 +551,7 @@ async function seed() {
         name: "Vikram Rao",
         dateOfBirth: "1996-06-10",
         gender: "male",
+        religion: "Hindu",
         heightCm: 183,
         bio: "Data Scientist & AI Researcher. Passionate about guitar, board games, and sci-fi books 🚀",
         relationshipStatus: "Single",
@@ -555,6 +567,7 @@ async function seed() {
         name: "Sneha Kulkarni",
         dateOfBirth: "2000-09-05",
         gender: "female",
+        religion: "Hindu",
         heightCm: 162,
         bio: "Content strategist & potter. Plant parent and weekend baker 🥐",
         relationshipStatus: "Single",
@@ -570,6 +583,7 @@ async function seed() {
         name: "Karthik Iyer",
         dateOfBirth: "1994-12-30",
         gender: "male",
+        religion: "Hindu",
         heightCm: 178,
         bio: "Investment Banker & Amateur Chef. Love classical fusion music, tennis, and culinary adventures 🍷",
         relationshipStatus: "Single",
@@ -585,6 +599,7 @@ async function seed() {
         name: "Diya Kapoor",
         dateOfBirth: "2002-03-18",
         gender: "female",
+        religion: "Sikh",
         heightCm: 170,
         bio: "Fashion Stylist & Travel Enthusiast. Always planning my next trip to the mountains 🏔️",
         relationshipStatus: "Single",
@@ -992,7 +1007,9 @@ async function seed() {
           maxAge: 35,
           maxDistanceKm: 50,
           preferredGenders: isFemale ? ["male"] : ["female"],
+          preferredInterestIds: [1, 2, 3, 4, 5],
           relationshipIntentions: ["long_term", "dating"],
+          religionPreferences: ["Hindu", "Open to all"],
           verifiedOnly: false,
         })
         .onConflictDoNothing();
@@ -1022,11 +1039,10 @@ async function seed() {
     if (pAmmu) {
       await db
         .insert(profileLanguages)
-        .values([
-          { profileId: pAmmu.id, languageId: langEng },
-          { profileId: pAmmu.id, languageId: langTel },
-          { profileId: pAmmu.id, languageId: langHin },
-        ])
+        .values({
+          profileId: pAmmu.id,
+          languageIds: [langEng, langTel, langHin],
+        })
         .onConflictDoNothing();
 
       await db
@@ -1045,10 +1061,10 @@ async function seed() {
     if (pAarav) {
       await db
         .insert(profileLanguages)
-        .values([
-          { profileId: pAarav.id, languageId: langEng },
-          { profileId: pAarav.id, languageId: langHin },
-        ])
+        .values({
+          profileId: pAarav.id,
+          languageIds: [langEng, langHin],
+        })
         .onConflictDoNothing();
 
       await db
@@ -1066,10 +1082,10 @@ async function seed() {
     if (pAnanya) {
       await db
         .insert(profileLanguages)
-        .values([
-          { profileId: pAnanya.id, languageId: langEng },
-          { profileId: pAnanya.id, languageId: langHin },
-        ])
+        .values({
+          profileId: pAnanya.id,
+          languageIds: [langEng, langHin],
+        })
         .onConflictDoNothing();
 
       await db
@@ -1087,11 +1103,10 @@ async function seed() {
     if (pVikram) {
       await db
         .insert(profileLanguages)
-        .values([
-          { profileId: pVikram.id, languageId: langEng },
-          { profileId: pVikram.id, languageId: langTel },
-          { profileId: pVikram.id, languageId: langHin },
-        ])
+        .values({
+          profileId: pVikram.id,
+          languageIds: [langEng, langTel, langHin],
+        })
         .onConflictDoNothing();
 
       await db
@@ -1109,11 +1124,10 @@ async function seed() {
     if (pPriya) {
       await db
         .insert(profileLanguages)
-        .values([
-          { profileId: pPriya.id, languageId: langEng },
-          { profileId: pPriya.id, languageId: langTel },
-          { profileId: pPriya.id, languageId: langTam },
-        ])
+        .values({
+          profileId: pPriya.id,
+          languageIds: [langEng, langTel, langTam],
+        })
         .onConflictDoNothing();
 
       await db

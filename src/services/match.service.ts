@@ -192,7 +192,10 @@ export class MatchService {
             languageName: languages.name,
           })
           .from(profileLanguages)
-          .innerJoin(languages, eq(profileLanguages.languageId, languages.id))
+          .innerJoin(
+            languages,
+            sql`${languages.id} = ANY(${profileLanguages.languageIds})`
+          )
           .where(inArray(profileLanguages.profileId, profileIds))
       : [];
 

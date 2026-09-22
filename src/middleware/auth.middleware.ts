@@ -6,6 +6,32 @@ import { eq, and } from "drizzle-orm";
 import ApiResponse from "../utils/response";
 import type { TokenPayload, SafeUser } from "../types/index";
 
+const toSafeUser = (user: {
+  id: string;
+  email: string | null;
+  phone: string | null;
+  role: string;
+  status: string;
+  emailVerified: boolean;
+  phoneVerified: boolean;
+  authProvider: string;
+  lastLoginAt: Date | null;
+  lastActiveAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}): SafeUser => ({
+  id: user.id,
+  userId: user.id,
+  phone: user.phone,
+  countryCode: "IN",
+  preferredLanguage: "en",
+  role: user.role,
+  isVerified: user.emailVerified || user.phoneVerified,
+  profileCompleted: user.emailVerified || user.phoneVerified,
+  createdAt: user.createdAt,
+  updatedAt: user.updatedAt,
+});
+
 /**
  * Authenticate JWT Access Token
  * Production: Strictly enforces JWT Bearer Token.
@@ -68,7 +94,7 @@ export const authenticate = async (
         });
       }
 
-      req.user = user as SafeUser;
+      req.user = toSafeUser(user);
       return next();
     }
 
@@ -76,9 +102,15 @@ export const authenticate = async (
     if (isDev) {
       // Check if developer specified a user ID via header
       const devUserId = req.headers["x-user-id"] as string | undefined;
+      const isValidUuid = Boolean(
+        devUserId &&
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+            devUserId
+          )
+      );
 
       let devUser;
-      if (devUserId) {
+      if (isValidUuid && devUserId) {
         [devUser] = await db
           .select({
             id: users.id,
@@ -96,7 +128,9 @@ export const authenticate = async (
           })
           .from(users)
           .where(and(eq(users.id, devUserId), eq(users.status, "active")));
-      } else {
+      }
+
+      if (!devUser) {
         // Fallback to the first active user in database for instant 1-click testing
         [devUser] = await db
           .select({
@@ -119,7 +153,7 @@ export const authenticate = async (
       }
 
       if (devUser) {
-        req.user = devUser as SafeUser;
+        req.user = toSafeUser(devUser);
         return next();
       }
     }
@@ -183,7 +217,7 @@ export const optionalAuth = async (
           .where(eq(users.id, decoded.id));
 
         if (user && user.status === "active") {
-          req.user = user as SafeUser;
+          req.user = toSafeUser(user);
         }
       }
     }

@@ -1,5 +1,5 @@
 {
-  "id": "28840cb0-9bbd-4cc0-95a6-955a365470be",
+  "id": "b73bce2d-7719-480c-a3aa-d87d50e79425",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -722,13 +722,19 @@
           "name": "date_of_birth",
           "type": "date",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "gender": {
           "name": "gender",
           "type": "varchar(30)",
           "primaryKey": false,
           "notNull": true
+        },
+        "religion": {
+          "name": "religion",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": false
         },
         "height_cm": {
           "name": "height_cm",
@@ -1459,7 +1465,7 @@
           "name": "email",
           "type": "varchar(255)",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "phone": {
           "name": "phone",
@@ -1984,22 +1990,22 @@
         "profile_id": {
           "name": "profile_id",
           "type": "uuid",
-          "primaryKey": false,
+          "primaryKey": true,
           "notNull": true
         },
-        "language_id": {
-          "name": "language_id",
-          "type": "integer",
+        "language_ids": {
+          "name": "language_ids",
+          "type": "integer[]",
           "primaryKey": false,
           "notNull": true
         }
       },
       "indexes": {
-        "profile_languages_language_id_idx": {
-          "name": "profile_languages_language_id_idx",
+        "profile_languages_language_ids_gin_idx": {
+          "name": "profile_languages_language_ids_gin_idx",
           "columns": [
             {
-              "expression": "language_id",
+              "expression": "language_ids",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -2007,7 +2013,7 @@
           ],
           "isUnique": false,
           "concurrently": false,
-          "method": "btree",
+          "method": "gin",
           "with": {}
         }
       },
@@ -2024,30 +2030,9 @@
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
-        },
-        "profile_languages_language_id_languages_id_fk": {
-          "name": "profile_languages_language_id_languages_id_fk",
-          "tableFrom": "profile_languages",
-          "tableTo": "languages",
-          "columnsFrom": [
-            "language_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {
-        "profile_languages_profile_id_language_id_pk": {
-          "name": "profile_languages_profile_id_language_id_pk",
-          "columns": [
-            "profile_id",
-            "language_id"
-          ]
-        }
-      },
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
@@ -2448,6 +2433,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "preferred_interest_ids": {
+          "name": "preferred_interest_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "relationship_intentions": {
           "name": "relationship_intentions",
           "type": "jsonb",
@@ -2715,6 +2706,18 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "document_image_storage_key": {
+          "name": "document_image_storage_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "document_image_url": {
+          "name": "document_image_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "status": {
           "name": "status",

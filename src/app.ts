@@ -5,6 +5,8 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 
+import authRoutes from "./routes/auth.routes";
+import profileRoutes from "./routes/profile.routes";
 import matchRoutes from "./routes/match.routes";
 import messageRoutes from "./routes/message.routes";
 import { notFoundHandler, errorHandler } from "./middleware/error.middleware";
@@ -30,7 +32,7 @@ app.get("/", (_req: Request, res: Response) => {
   });
 });
 
-app.get("/api/health", (_req: Request, res: Response) => {
+app.get(["/api/health", "/api/v1/health"], (_req: Request, res: Response) => {
   res.json({
     success: true,
     message: "API is healthy ❤️",
@@ -45,6 +47,12 @@ app.get("/favicon.ico", (_req: Request, res: Response) => {
 // =================================================================
 // API Routes (v1)
 // =================================================================
+// Authentication
+app.use("/api/v1/auth", authRoutes);
+
+// Profile & Onboarding
+app.use("/api/v1/profile", profileRoutes);
+
 // Matches, Discovery & Swiping
 app.use("/api/v1/matches", matchRoutes);
 

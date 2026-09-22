@@ -1,41 +1,21 @@
 import type { Request } from "express";
-import type { users, otpVerifications, userSessions } from "../db/schema";
+import type { users } from "../db/schema";
 
 // Database Inferred Models
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 
-export type OtpVerification = typeof otpVerifications.$inferSelect;
-export type NewOtpVerification = typeof otpVerifications.$inferInsert;
-
-export type UserSession = typeof userSessions.$inferSelect;
-export type NewUserSession = typeof userSessions.$inferInsert;
-
-export interface SocialAccount {
-  id: string;
-  userId: string;
-  provider: string;
-  providerUserId: string;
-}
-export type NewSocialAccount = Partial<SocialAccount>;
-
-// Safe User (sanitized payload without sensitive password hash)
+// Safe user data returned by authenticated endpoints.
 export interface SafeUser {
   id: string;
-  email: string;
-  phone?: string | null;
-  countryCode?: string;
-  preferredLanguage?: string;
+  userId: string;
+  phone: string | null;
+  countryCode: string;
+  preferredLanguage: string;
   role: string;
-  status: string;
-  isVerified?: boolean;
+  isVerified: boolean;
   isActive?: boolean;
-  emailVerified: boolean;
-  phoneVerified: boolean;
-  authProvider: string;
-  profileCompleted?: boolean;
-  lastLoginAt?: Date | null;
-  lastActiveAt?: Date | null;
+  profileCompleted: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -52,8 +32,7 @@ export interface SupportedLanguage {
 export interface TokenPayload {
   id: string;
   phone?: string | null;
-  email?: string | null;
-  role: string;
+  role?: string;
   [key: string]: unknown;
 }
 
@@ -86,6 +65,23 @@ export interface SendOtpResult {
   devOtp?: string;
 }
 
+export interface ResendOtpParams {
+  phone: string;
+  countryCode?: string;
+  preferredLanguage?: string;
+}
+
+export interface ResendOtpResult {
+  phone: string;
+  countryCode: string;
+  purpose: string;
+  /** Seconds until the new OTP expires (e.g. 600 = 10 minutes) */
+  expiresIn: number;
+  /** Seconds the client must wait before it can request another resend */
+  resendCooldown: number;
+  devOtp?: string;
+}
+
 export interface VerifyOtpParams {
   phone: string;
   countryCode?: string;
@@ -102,15 +98,6 @@ export interface AuthResult {
   tokens: TokensResponse;
 }
 
-export interface SocialAuthParams {
-  provider: string;
-  providerUserId: string;
-  providerEmail?: string;
-  preferredLanguage?: string;
-  userAgent?: string | null;
-  ipAddress?: string | null;
-}
-
 export interface RefreshTokenParams {
   refreshToken: string;
   userAgent?: string | null;
@@ -120,11 +107,6 @@ export interface RefreshTokenParams {
 export interface LogoutParams {
   refreshToken?: string;
   userId?: string;
-}
-
-export interface SetLanguageParams {
-  userId: string;
-  language: string;
 }
 
 // API Response Structures
@@ -314,7 +296,6 @@ export interface AdminUserListParams {
 }
 
 export interface AdminUserRecord extends SafeUser {
-  email: string;
   isActive?: boolean;
   createdAt?: Date;
 }

@@ -8,6 +8,7 @@ import {
 import { generateOTP, sendSmsOTP } from "../utils/otp";
 import { generateTokens, verifyRefreshToken } from "../utils/jwt";
 import AuthRepository from "../repositories/auth.repository";
+import UserService from "./user.service";
 
 import type {
   AppError,
@@ -240,6 +241,34 @@ export class AuthService {
         status: "active",
         authProvider: "phone",
       });
+    } else if (existingUser.status === "deactivated") {
+      if (
+        existingUser.scheduledDeletionAt &&
+        new Date(existingUser.scheduledDeletionAt).getTime() <= now.getTime()
+      ) {
+        await UserService.permanentlyDeleteAccount(existingUser.id);
+        isNewUser = true;
+        user = await AuthRepository.createUser({
+          phone: fullPhone,
+          phoneVerified: true,
+          status: "active",
+          authProvider: "phone",
+        });
+      } else {
+        user = await UserService.reactivateAccount(existingUser.id);
+      }
+    } else if (existingUser.status === "deleted") {
+      const error = new Error(
+        "This account was permanently deleted",
+      ) as AppError;
+      error.statusCode = 410;
+      error.code = "ACCOUNT_PERMANENTLY_DELETED";
+      throw error;
+    } else if (existingUser.status !== "active") {
+      const error = new Error("This account is not available") as AppError;
+      error.statusCode = 403;
+      error.code = "ACCOUNT_UNAVAILABLE";
+      throw error;
     } else {
       // Update existing user verification and display language
       const updates = {

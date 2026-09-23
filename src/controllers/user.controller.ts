@@ -105,10 +105,13 @@ export class UserController {
   }
 
   /**
-   * DELETE /api/v1/users/me
-   * Deactivate (soft-delete) the authenticated user's account
+   * POST /api/v1/users/me/deactivate
+   * Deactivate the account for 30 calendar days.
    */
-  static async deleteAccount(req: Request, res: Response): Promise<Response> {
+  static async deactivateAccount(
+    req: Request,
+    res: Response,
+  ): Promise<Response> {
     const userId = req.user?.id;
 
     if (!userId) {
@@ -132,25 +135,66 @@ export class UserController {
       });
     }
 
-    if (user.status === "deleted") {
+    if (user.status !== "active") {
       return ApiResponse.error(res, {
         statusCode: 409,
-        message: "Account is already deactivated",
-        code: "ALREADY_INACTIVE",
+        message: "Account is already inactive",
+        code: "ACCOUNT_ALREADY_INACTIVE",
       });
     }
 
-    // Soft-delete: set status to deleted and record deletedAt
-    const now = new Date();
-    await db
-      .update(users)
-      .set({ status: "deleted", deletedAt: now, updatedAt: now })
-      .where(eq(users.id, userId));
+    const updated = await UserService.deactivateAccount(userId);
 
     return ApiResponse.success(res, {
       statusCode: 200,
       message:
-        "Account deactivated successfully. Your data will be retained for 30 days before permanent deletion.",
+        "Account deactivated. Log in within 30 calendar days to reactivate it; otherwise all account data will be permanently deleted.",
+      data: { scheduledDeletionAt: updated?.scheduledDeletionAt },
+    });
+  }
+
+  static async requestAccountDeletionOtp(
+    req: Request,
+    res: Response,
+  ): Promise<Response> {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return ApiResponse.error(res, {
+        statusCode: 401,
+        message: "Unauthorized",
+        code: "UNAUTHORIZED",
+      });
+    }
+
+    const result = await UserService.requestAccountDeletionOtp(userId);
+
+    return ApiResponse.success(res, {
+      statusCode: 200,
+      message: "Account deletion OTP sent to your registered phone number.",
+      data: result,
+    });
+  }
+
+  static async confirmAccountDeletion(
+    req: Request,
+    res: Response,
+  ): Promise<Response> {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return ApiResponse.error(res, {
+        statusCode: 401,
+        message: "Unauthorized",
+        code: "UNAUTHORIZED",
+      });
+    }
+
+    await UserService.confirmAccountDeletion(userId, req.body.otp);
+
+    return ApiResponse.success(res, {
+      statusCode: 200,
+      message: "Account and all related data permanently deleted.",
     });
   }
 }

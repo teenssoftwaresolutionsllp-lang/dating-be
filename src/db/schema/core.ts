@@ -37,7 +37,7 @@ export const users = pgTable(
       .default("email")
       .notNull(),
     role: varchar("role", { length: 20 }).default("user").notNull(), // user, moderator, admin
-    status: varchar("status", { length: 20 }).default("active").notNull(), // active, suspended, banned, deleted
+    status: varchar("status", { length: 20 }).default("active").notNull(), // active, deactivated, suspended, banned, deleted
     emailVerified: boolean("email_verified").default(false).notNull(),
     phoneVerified: boolean("phone_verified").default(false).notNull(),
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
@@ -51,6 +51,10 @@ export const users = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
+    deactivatedAt: timestamp("deactivated_at", { withTimezone: true }),
+    scheduledDeletionAt: timestamp("scheduled_deletion_at", {
+      withTimezone: true,
+    }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [

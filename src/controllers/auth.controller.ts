@@ -20,17 +20,10 @@ const setRefreshTokenCookie = (res: Response, refreshToken: string): void => {
   });
 };
 
-const includeRefreshTokenInBody = (req: Request): boolean =>
-  req.headers["x-client-platform"] === "react-native";
-
 const tokenResponse = (
-  req: Request,
   refreshToken: string,
   publicTokens: Omit<TokensResponse, "refreshToken">,
-) =>
-  includeRefreshTokenInBody(req)
-    ? { ...publicTokens, refreshToken }
-    : publicTokens;
+) => ({ ...publicTokens, refreshToken });
 
 export class AuthController {
   static async refresh(req: Request, res: Response): Promise<Response> {
@@ -59,7 +52,7 @@ export class AuthController {
       statusCode: 200,
       message: "Token refreshed successfully",
       data: {
-        tokens: tokenResponse(req, rotatedRefreshToken, publicTokens),
+        tokens: tokenResponse(rotatedRefreshToken, publicTokens),
       },
     });
   }
@@ -124,7 +117,7 @@ export class AuthController {
         : "Social login successful",
       data: {
         ...result,
-        tokens: tokenResponse(req, refreshToken, publicTokens),
+        tokens: tokenResponse(refreshToken, publicTokens),
       },
     });
   }
@@ -207,7 +200,7 @@ export class AuthController {
         : "OTP verified and logged in successfully",
       data: {
         ...result,
-        tokens: tokenResponse(req, refreshToken, publicTokens),
+        tokens: tokenResponse(refreshToken, publicTokens),
       },
     });
   }

@@ -48,6 +48,15 @@ export const verifyOtpSchema = z.object({
   preferredLanguage: preferredLanguageSchema,
 });
 
+export const deleteAccountOtpSchema = z.object({
+  otp: z
+    .string()
+    .trim()
+    .regex(/^\d{4}$/, {
+      message: "Invalid OTP format (4 digits required)",
+    }),
+});
+
 export const refreshTokenSchema = z.object({
   refreshToken: z.string().trim().min(1, "Refresh token is required"),
 });

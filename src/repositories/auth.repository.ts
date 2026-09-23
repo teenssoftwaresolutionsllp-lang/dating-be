@@ -33,6 +33,26 @@ class AuthRepository {
     return otp;
   }
 
+  async findLatestActiveOtpForUser(
+    userId: string,
+    purpose: string,
+  ): Promise<OtpVerification | undefined> {
+    const [otp] = await db
+      .select()
+      .from(otpVerifications)
+      .where(
+        and(
+          eq(otpVerifications.userId, userId),
+          eq(otpVerifications.purpose, purpose),
+          isNull(otpVerifications.verifiedAt),
+        ),
+      )
+      .orderBy(desc(otpVerifications.createdAt))
+      .limit(1);
+
+    return otp;
+  }
+
   async createOtp(values: NewOtpVerification): Promise<void> {
     await db.insert(otpVerifications).values(values);
   }

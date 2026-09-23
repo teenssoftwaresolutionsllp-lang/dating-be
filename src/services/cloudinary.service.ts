@@ -46,3 +46,12 @@ export const deleteCloudinaryAsset = async (
   requireCloudinary();
   await cloudinary.uploader.destroy(publicId, { resource_type: "image" });
 };
+
+export const deleteCloudinaryUserAssets = async (
+  userId: string,
+): Promise<void> => {
+  requireCloudinary();
+  await cloudinary.api.delete_resources_by_prefix(
+    `dating-app/profiles/${userId}`,
+  );
+};

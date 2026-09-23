@@ -30,6 +30,8 @@ The API currently supports:
 - single or multiple profile-photo uploads
 - dating preferences
 - onboarding completion validation
+- account deactivation with 30-calendar-day reactivation
+- OTP-confirmed permanent account deletion
 
 The following features are not mounted as API routes yet:
 
@@ -155,6 +157,7 @@ Common status codes:
 | 401    | Authentication required or token invalid |
 | 403    | Account inactive or permission denied    |
 | 404    | User or endpoint not found               |
+| 410    | Account was permanently deleted          |
 | 429    | OTP resend cooldown is active            |
 | 500    | Unexpected server error                  |
 
@@ -179,7 +182,9 @@ Use this order to test the complete currently implemented flow:
 15. Save selected interests
 16. Save dating preferences
 17. Try onboarding completion
-18. Test logout or logout-all
+18. Test account deactivation and reactivation
+19. Test permanent deletion OTP confirmation
+20. Test logout or logout-all
 
 The completion request will report `PHOTOS` as missing until at least one profile photo is uploaded to Cloudinary. KYC is temporarily marked
 `verified` after a successful document-photo upload.
@@ -397,7 +402,10 @@ Expected response shape:
 }
 ```
 
-The refresh token is intentionally not included in the JSON response. It is set as an HTTP-only cookie.
+The refresh token is set as an HTTP-only cookie and is also included in
+`data.tokens.refreshToken`. This JSON response is the same for browser,
+Thunder Client, Postman, and React Native clients. React Native clients should
+store the token securely with `expo-secure-store`.
 
 Postman **Tests** script:
 
@@ -459,11 +467,10 @@ if (json.data && json.data.tokens && json.data.tokens.accessToken) {
 }
 ```
 
-React Native clients should send `X-Client-Platform: react-native`. Login and
-refresh responses then include the refresh token in JSON, and the client can
-send it in the `refreshToken` request field. Browser clients continue using the
-HTTP-only cookie automatically. The complete React Native example is in
-[Section 8.7](#87-react-native-authentication-example).
+Login and refresh responses include the refresh token in JSON for every client.
+Clients may send it in the `refreshToken` request field, and browser clients
+also receive it through the HTTP-only cookie. The complete React Native example
+is in [Section 8.7](#87-react-native-authentication-example).
 
 ### 8.5 Logout
 
@@ -534,7 +541,7 @@ LAN IP address. For example:
 const API_URL = "http://192.168.1.10:5000/api/v1";
 ```
 
-Verify the OTP and identify the client as React Native:
+Verify the OTP. The response shape is the same for every client:
 
 ```ts
 import * as SecureStore from "expo-secure-store";
@@ -543,7 +550,6 @@ const response = await fetch(`${API_URL}/auth/verify-otp`, {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
-    "X-Client-Platform": "react-native",
   },
   body: JSON.stringify({
     phone: "9876543210",
@@ -578,7 +584,6 @@ const response = await fetch(`${API_URL}/auth/refresh-token`, {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
-    "X-Client-Platform": "react-native",
   },
   body: JSON.stringify({ refreshToken }),
 });
@@ -598,7 +603,6 @@ await fetch(`${API_URL}/auth/logout`, {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
-    "X-Client-Platform": "react-native",
   },
   body: JSON.stringify({ refreshToken }),
 });
@@ -646,6 +650,156 @@ Expected response shape:
   }
 }
 ```
+
+### 8.9 Account lifecycle routes
+
+Account lifecycle routes are mounted under:
+
+```text
+/api/v1/account
+```
+
+All account lifecycle routes require:
+
+```http
+Authorization: Bearer {{accessToken}}
+```
+
+#### 8.9.1 Deactivate account
+
+```http
+POST {{baseUrl}}/api/v1/account/me/deactivate
+```
+
+Purpose:
+
+- hides the account from normal active-user flows
+- revokes the user’s active sessions
+- sets the account status to `deactivated`
+- schedules permanent deletion 30 calendar days later
+
+No request body is required.
+
+Expected response:
+
+```json
+{
+  "success": true,
+  "statusCode": 200,
+  "message": "Account deactivated. Log in within 30 calendar days to reactivate it; otherwise all account data will be permanently deleted.",
+  "data": {
+    "scheduledDeletionAt": "2026-10-23T12:00:00.000Z"
+  }
+}
+```
+
+After deactivation, discard the current access and refresh tokens. The user
+must use the normal phone OTP login flow to return.
+
+#### 8.9.2 Reactivate a deactivated account
+
+There is no separate reactivation endpoint. Reactivation happens during:
+
+```http
+POST {{baseUrl}}/api/v1/auth/verify-otp
+```
+
+If the phone belongs to a `deactivated` account and the 30-day deadline has not
+passed, successful OTP verification:
+
+- changes the status back to `active`
+- clears `deactivatedAt` and `scheduledDeletionAt`
+- creates a new authenticated session
+- returns new access and refresh tokens
+
+If the deadline has passed, the old account data is permanently deleted and
+the verified phone number starts a completely new account with a new user ID.
+
+#### 8.9.3 Request permanent-deletion OTP
+
+```http
+POST {{baseUrl}}/api/v1/account/me/delete/request-otp
+```
+
+Purpose:
+
+- starts permanent deletion confirmation
+- sends an OTP to the phone number stored on the authenticated account
+- does not delete any data
+
+The phone number must not be sent in the request body. The backend reads it
+from the authenticated user record.
+
+No request body is required.
+
+Development response example:
+
+```json
+{
+  "success": true,
+  "statusCode": 200,
+  "message": "Account deletion OTP sent to your registered phone number.",
+  "data": {
+    "expiresIn": 600,
+    "resendCooldown": 30,
+    "devOtp": "1234"
+  }
+}
+```
+
+`devOtp` is returned only outside production. Production clients must use the
+OTP received by SMS. A new request during the cooldown returns
+`429 OTP_COOLDOWN_ACTIVE`.
+
+#### 8.9.4 Confirm permanent deletion
+
+```http
+POST {{baseUrl}}/api/v1/account/me/delete/confirm
+```
+
+Request body:
+
+```json
+{
+  "otp": "1234"
+}
+```
+
+The OTP must contain exactly four digits. The backend verifies an OTP with the
+dedicated `DELETE_ACCOUNT` purpose and the authenticated user ID. It does not
+accept a phone number or user ID from the client.
+
+On success, the backend:
+
+- deletes the user row and cascading related database records
+- removes profile-related data, sessions, messages, matches, settings, and
+  other records configured with user foreign-key cascades
+- removes the user’s Cloudinary profile assets when Cloudinary is configured
+- releases the old phone number for future registration
+
+Expected response:
+
+```json
+{
+  "success": true,
+  "statusCode": 200,
+  "message": "Account and all related data permanently deleted."
+}
+```
+
+After success, clear all locally stored access and refresh tokens. The old
+account cannot be reactivated. If the same phone number is used later, OTP
+verification creates a new user ID and empty profile.
+
+Common deletion errors:
+
+| Code                               | Meaning                             |
+| ---------------------------------- | ----------------------------------- |
+| `DELETE_OTP_NOT_FOUND`             | No active deletion OTP exists       |
+| `DELETE_OTP_EXPIRED`               | Deletion OTP has expired            |
+| `DELETE_OTP_MAX_ATTEMPTS_EXCEEDED` | Too many incorrect attempts         |
+| `INVALID_DELETE_OTP`               | Submitted deletion OTP is incorrect |
+| `OTP_COOLDOWN_ACTIVE`              | A new OTP cannot be requested yet   |
 
 ## 9. Profile and Onboarding Routes
 
@@ -770,6 +924,51 @@ Expected response after saving data:
       "preferredGenders": ["female"]
     }
   }
+}
+```
+
+### 9.2.1 Discover people
+
+Both endpoints require a Bearer access token and return only card-safe data. They exclude the authenticated user, inactive accounts, hidden profiles, and users already swiped by the authenticated user.
+
+#### Nearby people
+
+```http
+GET {{baseUrl}}/api/v1/people/nearby?radiusKm=50&page=1&limit=20
+```
+
+`radiusKm` defaults to `50` and accepts values from `1` to `500`. The caller must have saved latitude and longitude. Results are ordered nearest first and include `distanceKm`.
+
+#### People with similar interests
+
+```http
+GET {{baseUrl}}/api/v1/people/similar-interests?page=1&limit=20
+```
+
+Results are ordered by the number of shared interests and include `sharedInterestCount` and `sharedInterests`.
+
+Example response:
+
+```json
+{
+  "success": true,
+  "statusCode": 200,
+  "message": "Nearby people retrieved successfully",
+  "data": [
+    {
+      "userId": "user-uuid",
+      "name": "Aisha",
+      "age": 27,
+      "gender": "female",
+      "bio": "Weekend hiker and reader.",
+      "city": "Kolkata",
+      "state": "West Bengal",
+      "country": "India",
+      "photoUrl": "https://res.cloudinary.com/example/image/upload/profile.jpg",
+      "distanceKm": 4.2
+    }
+  ],
+  "meta": { "page": 1, "limit": 20, "radiusKm": 50 }
 }
 ```
 
@@ -1523,7 +1722,7 @@ removed `users.onboarding_step` or `users.onboarding_completed_at` columns.
 
 ## 14. Known Limitations
 
-1. React Native clients must securely store refresh tokens and send `X-Client-Platform: react-native` when using JSON refresh-token transport.
+1. Clients must securely store refresh tokens when using JSON refresh-token transport.
 2. Languages and interests require master data to be inserted before selection requests can succeed.
 3. Profile photos are stored in Cloudinary; the local filesystem is not used for new profile photo uploads.
 4. KYC uploads are currently marked `verified` immediately. Admin or provider verification is not implemented yet.

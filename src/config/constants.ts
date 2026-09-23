@@ -40,6 +40,7 @@ export const SUPPORTED_LANGUAGES = [
 export const OTP_PURPOSES = {
   LOGIN: "LOGIN",
   REGISTER: "REGISTER",
+  DELETE_ACCOUNT: "DELETE_ACCOUNT",
 };
 
 export const USER_ROLES = {
@@ -53,7 +54,8 @@ export const OTP_CONFIG = {
   /** OTP validity window in minutes — 10 min as per product spec */
   EXPIRY_MINUTES: Number(process.env.OTP_EXPIRY_MINUTES) || 10,
   /** Minimum wait time before allowing a resend request — 30 s as per product spec */
-  RESEND_COOLDOWN_SECONDS: Number(process.env.OTP_RESEND_COOLDOWN_SECONDS) || 30,
+  RESEND_COOLDOWN_SECONDS:
+    Number(process.env.OTP_RESEND_COOLDOWN_SECONDS) || 30,
   /** Maximum wrong attempts before OTP is invalidated */
   MAX_ATTEMPTS: 3,
 };

@@ -167,23 +167,7 @@ class ProfileService {
 
     const nextStep = this.getNextStep(mergedProfile, status.onboardingStep);
 
-    const hasLocationUpdate = [
-      "city",
-      "state",
-      "country",
-      "latitude",
-      "longitude",
-    ].some((field) => values[field as keyof ProfileUpdate] !== undefined);
-
-    const profileValues = hasLocationUpdate
-      ? { ...values, locationUpdatedAt: new Date() }
-      : values;
-
-    return ProfileRepository.saveProfileAndStep(
-      userId,
-      profileValues,
-      nextStep,
-    );
+    return ProfileRepository.saveProfileAndStep(userId, values, nextStep);
   }
 
   async getLanguages(): Promise<Language[]> {
@@ -388,12 +372,7 @@ class ProfileService {
       missingSteps.push("BASIC_DETAILS");
     }
 
-    if (
-      !data.profile?.city &&
-      !data.profile?.state &&
-      !data.profile?.country &&
-      (data.profile?.latitude === null || data.profile?.longitude === null)
-    ) {
+    if (!data.profile?.locationId) {
       missingSteps.push("LOCATION");
     }
 
@@ -454,10 +433,7 @@ class ProfileService {
       profile.gender &&
       profile.dateOfBirth &&
       profile.heightCm &&
-      (profile.city ||
-        profile.state ||
-        profile.country ||
-        (profile.latitude !== null && profile.longitude !== null))
+      profile.locationId
     ) {
       nextStep = "RELATIONSHIP";
     }
@@ -467,10 +443,7 @@ class ProfileService {
       profile.gender &&
       profile.dateOfBirth &&
       profile.heightCm &&
-      (profile.city ||
-        profile.state ||
-        profile.country ||
-        (profile.latitude !== null && profile.longitude !== null)) &&
+      profile.locationId &&
       profile.relationshipStatus
     ) {
       nextStep = "LANGUAGES";

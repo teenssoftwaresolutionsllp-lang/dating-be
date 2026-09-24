@@ -31,12 +31,6 @@ export type ProfileUpdate = Partial<
     | "gender"
     | "religion"
     | "heightCm"
-    | "city"
-    | "state"
-    | "country"
-    | "latitude"
-    | "longitude"
-    | "locationUpdatedAt"
     | "relationshipStatus"
     | "bio"
   >
@@ -514,12 +508,7 @@ class ProfileRepository {
       onboardingStep = "BIRTHDAY";
     } else if (!data.profile.heightCm) {
       onboardingStep = "LOCATION";
-    } else if (
-      !data.profile.city &&
-      !data.profile.state &&
-      !data.profile.country &&
-      (data.profile.latitude === null || data.profile.longitude === null)
-    ) {
+    } else if (!data.profile.locationId) {
       onboardingStep = "LOCATION";
     } else if (!data.profile.relationshipStatus) {
       onboardingStep = "RELATIONSHIP";

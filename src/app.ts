@@ -11,6 +11,7 @@ import matchRoutes from "./routes/match.routes";
 import messageRoutes from "./routes/message.routes";
 import peopleRoutes from "./routes/people.routes";
 import accountRoutes from "./routes/account.routes";
+import locationRoutes from "./routes/location.routes";
 import { errorHandler, notFoundHandler } from "./middleware/error.middleware";
 
 const app: Express = express();
@@ -60,6 +61,7 @@ app.use("/api/v1/people", peopleRoutes);
 app.use("/api/v1/matches", matchRoutes);
 app.use("/api/v1/messages", messageRoutes);
 app.use("/api/v1/account", accountRoutes);
+app.use("/api/v1", locationRoutes);
 
 // =================================================================
 // Error Handling

@@ -2,6 +2,7 @@ import { and, asc, desc, eq, isNull, ne, or, sql } from "drizzle-orm";
 import { db } from "../db/index";
 import {
   interests,
+  locations,
   profileInterests,
   profilePhotos,
   profiles,
@@ -36,8 +37,9 @@ const primaryPhotoJoin = and(
 class PeopleRepository {
   async findLocationByUserId(userId: string) {
     const [profile] = await db
-      .select({ latitude: profiles.latitude, longitude: profiles.longitude })
+      .select({ latitude: locations.latitude, longitude: locations.longitude })
       .from(profiles)
+      .leftJoin(locations, eq(profiles.locationId, locations.id))
       .where(eq(profiles.userId, userId));
 
     return profile;
@@ -53,9 +55,9 @@ class PeopleRepository {
   ) {
     const distanceKm = sql<number>`6371 * acos(
       least(1, greatest(-1,
-        cos(radians(${latitude})) * cos(radians(${profiles.latitude})) *
-        cos(radians(${profiles.longitude}) - radians(${longitude})) +
-        sin(radians(${latitude})) * sin(radians(${profiles.latitude}))
+        cos(radians(${latitude})) * cos(radians(${locations.latitude})) *
+        cos(radians(${locations.longitude}) - radians(${longitude})) +
+        sin(radians(${latitude})) * sin(radians(${locations.latitude}))
       ))
     )`;
 
@@ -66,22 +68,23 @@ class PeopleRepository {
         dateOfBirth: profiles.dateOfBirth,
         gender: profiles.gender,
         bio: profiles.bio,
-        city: profiles.city,
-        state: profiles.state,
-        country: profiles.country,
+        city: locations.city,
+        state: locations.state,
+        country: locations.country,
         photoUrl: profilePhotos.url,
         distanceKm,
       })
       .from(profiles)
       .innerJoin(users, eq(users.id, profiles.userId))
+      .innerJoin(locations, eq(profiles.locationId, locations.id))
       .leftJoin(userSettings, eq(userSettings.userId, profiles.userId))
       .leftJoin(profilePhotos, primaryPhotoJoin)
       .where(
         and(
           visibleActiveProfile(userId),
           hasNotBeenSwiped(userId),
-          sql`${profiles.latitude} IS NOT NULL`,
-          sql`${profiles.longitude} IS NOT NULL`,
+          sql`${locations.latitude} IS NOT NULL`,
+          sql`${locations.longitude} IS NOT NULL`,
           sql`${distanceKm} <= ${radiusKm}`,
         ),
       )
@@ -104,9 +107,9 @@ class PeopleRepository {
         dateOfBirth: profiles.dateOfBirth,
         gender: profiles.gender,
         bio: profiles.bio,
-        city: profiles.city,
-        state: profiles.state,
-        country: profiles.country,
+        city: locations.city,
+        state: locations.state,
+        country: locations.country,
         photoUrl: profilePhotos.url,
         sharedInterestCount: sql<number>`count(distinct ${profileInterests.interestId})`,
         sharedInterests: sql<
@@ -117,6 +120,7 @@ class PeopleRepository {
       .innerJoin(profiles, eq(profiles.id, profileInterests.profileId))
       .innerJoin(users, eq(users.id, profiles.userId))
       .innerJoin(interests, eq(interests.id, profileInterests.interestId))
+      .leftJoin(locations, eq(profiles.locationId, locations.id))
       .leftJoin(userSettings, eq(userSettings.userId, profiles.userId))
       .leftJoin(profilePhotos, primaryPhotoJoin)
       .where(
@@ -132,9 +136,9 @@ class PeopleRepository {
         profiles.dateOfBirth,
         profiles.gender,
         profiles.bio,
-        profiles.city,
-        profiles.state,
-        profiles.country,
+        locations.city,
+        locations.state,
+        locations.country,
         profilePhotos.url,
       )
       .orderBy(

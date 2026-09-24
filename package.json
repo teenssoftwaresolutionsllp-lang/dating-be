@@ -31,6 +31,7 @@
   },
   "homepage": "https://github.com/teenssoftwaresolutionsllp-lang/dating-be#readme",
   "dependencies": {
+    "axios": "^1.20.0",
     "bcryptjs": "^3.0.3",
     "cloudinary": "^2.11.0",
     "cors": "^2.8.6",

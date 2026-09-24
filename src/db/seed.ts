@@ -28,7 +28,93 @@ import {
   subscriptions,
   payments,
   featureUsage,
+  locations,
 } from "./schema";
+
+const popularCities = [
+  ["Ahmedabad", "Gujarat"],
+  ["Pune", "Maharashtra"],
+  ["Surat", "Gujarat"],
+  ["Jaipur", "Rajasthan"],
+  ["Delhi", "National Capital Territory of Delhi"],
+  ["Mumbai", "Maharashtra"],
+  ["Kolkata", "West Bengal"],
+  ["Bengaluru", "Karnataka"],
+  ["Chennai", "Tamil Nadu"],
+  ["Hyderabad", "Telangana"],
+] as const;
+
+type GoogleSeedPlace = {
+  id?: string;
+  displayName?: { text?: string };
+  location?: { latitude?: number; longitude?: number };
+  addressComponents?: Array<{ longText?: string; types?: string[] }>;
+};
+
+const getGoogleAddressComponent = (
+  place: GoogleSeedPlace,
+  type: string,
+): string | null =>
+  place.addressComponents?.find((component) => component.types?.includes(type))
+    ?.longText ?? null;
+
+const seedLocations = async (): Promise<void> => {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  if (!apiKey) {
+    throw new Error("GOOGLE_MAPS_API_KEY is not configured");
+  }
+
+  for (const [city, state] of popularCities) {
+    const response = await fetch(
+      "https://places.googleapis.com/v1/places:searchText",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": apiKey,
+          "X-Goog-FieldMask":
+            "places.id,places.displayName,places.location,places.addressComponents",
+        },
+        body: JSON.stringify({
+          textQuery: `${city}, ${state}, India`,
+          languageCode: "en",
+          regionCode: "IN",
+          pageSize: 1,
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(`Google Places API failed while seeding ${city}`);
+    }
+
+    const data = (await response.json()) as { places?: GoogleSeedPlace[] };
+    const place = data.places?.[0];
+    const latitude = place?.location?.latitude;
+    const longitude = place?.location?.longitude;
+
+    if (!place?.id || latitude == null || longitude == null) {
+      throw new Error(`Incomplete Google location data for ${city}`);
+    }
+
+    await db
+      .insert(locations)
+      .values({
+        googlePlaceId: place.id,
+        name: place.displayName?.text ?? city,
+        city: getGoogleAddressComponent(place, "locality") ?? city,
+        state:
+          getGoogleAddressComponent(place, "administrative_area_level_1") ??
+          state,
+        country: getGoogleAddressComponent(place, "country") ?? "India",
+        latitude,
+        longitude,
+      })
+      .onConflictDoNothing({ target: locations.googlePlaceId });
+
+    console.log(`   ✓ Location processed: ${city}`);
+  }
+};
 
 /**
  * ============================================================================
@@ -111,6 +197,8 @@ async function seed() {
       ])
       .onConflictDoNothing()
       .returning();
+
+    await seedLocations();
 
     const [featLikes, featSuperLike, featSeeWhoLiked, featBoost, featFilters] =
       await db
@@ -315,11 +403,6 @@ async function seed() {
           heightCm: 180,
           bio: "Software Architect & Weekend trekker. Searching for good conversations and great filter coffee.",
           relationshipStatus: "single",
-          city: "Bengaluru",
-          state: "Karnataka",
-          country: "India",
-          latitude: 12.9716,
-          longitude: 77.5946,
         })
         .onConflictDoNothing()
         .returning();
@@ -336,11 +419,6 @@ async function seed() {
           heightCm: 165,
           bio: "UI/UX Designer. Obsessed with indie cinema, matcha lattes, and rooftop sunsets 🌅",
           relationshipStatus: "single",
-          city: "Bengaluru",
-          state: "Karnataka",
-          country: "India",
-          latitude: 12.9784,
-          longitude: 77.6408,
         })
         .onConflictDoNothing()
         .returning();
@@ -357,11 +435,6 @@ async function seed() {
           heightCm: 175,
           bio: "Product Manager. Love marathon running, podcasts, and discovering hidden cocktail bars.",
           relationshipStatus: "single",
-          city: "Mumbai",
-          state: "Maharashtra",
-          country: "India",
-          latitude: 19.076,
-          longitude: 72.8777,
         })
         .onConflictDoNothing()
         .returning();
@@ -378,11 +451,6 @@ async function seed() {
           heightCm: 168,
           bio: "Architectural photographer. Dog mom to a golden retriever named Bruno 🐾",
           relationshipStatus: "single",
-          city: "Bengaluru",
-          state: "Karnataka",
-          country: "India",
-          latitude: 12.9352,
-          longitude: 77.6245,
         })
         .onConflictDoNothing()
         .returning();

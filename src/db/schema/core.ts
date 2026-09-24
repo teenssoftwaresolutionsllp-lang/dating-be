@@ -76,6 +76,37 @@ export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 
 /**
+ * Canonical Google Places location selected by a user during onboarding.
+ */
+export const locations = pgTable(
+  "locations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    googlePlaceId: varchar("google_place_id", { length: 255 })
+      .notNull()
+      .unique(),
+    name: varchar("name", { length: 255 }),
+    city: varchar("city", { length: 100 }),
+    state: varchar("state", { length: 100 }),
+    country: varchar("country", { length: 100 }),
+    latitude: doublePrecision("latitude").notNull(),
+    longitude: doublePrecision("longitude").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("locations_google_place_id_unique_idx").on(table.googlePlaceId),
+  ],
+);
+
+export type Location = typeof locations.$inferSelect;
+export type NewLocation = typeof locations.$inferInsert;
+
+/**
  * profiles
  * Candidate-facing profile information shown to other users, including structured
  * location coordinates for geographic matching algorithms.
@@ -88,6 +119,9 @@ export const profiles = pgTable(
       .notNull()
       .unique()
       .references(() => users.id, { onDelete: "cascade" }),
+    locationId: uuid("location_id").references(() => locations.id, {
+      onDelete: "set null",
+    }),
     name: varchar("name", { length: 100 }).notNull(),
     dateOfBirth: date("date_of_birth", { mode: "string" }),
     gender: varchar("gender", { length: 30 }).notNull(), // male, female, non_binary, other
@@ -95,12 +129,6 @@ export const profiles = pgTable(
     heightCm: smallint("height_cm"),
     bio: text("bio"),
     relationshipStatus: varchar("relationship_status", { length: 30 }),
-    city: varchar("city", { length: 100 }),
-    state: varchar("state", { length: 100 }),
-    country: varchar("country", { length: 100 }),
-    latitude: doublePrecision("latitude"),
-    longitude: doublePrecision("longitude"),
-    locationUpdatedAt: timestamp("location_updated_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -112,8 +140,6 @@ export const profiles = pgTable(
     uniqueIndex("profiles_user_id_unique_idx").on(table.userId),
     index("profiles_gender_idx").on(table.gender),
     index("profiles_dob_idx").on(table.dateOfBirth),
-    index("profiles_city_idx").on(table.city),
-    index("profiles_lat_long_idx").on(table.latitude, table.longitude),
     check(
       "profiles_height_positive_check",
       sql`${table.heightCm} IS NULL OR ${table.heightCm} > 0`,

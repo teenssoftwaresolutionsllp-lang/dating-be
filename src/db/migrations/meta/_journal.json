@@ -204,6 +204,27 @@
       "when": 1790073122515,
       "tag": "0028_funny_jackpot",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1790232698946,
+      "tag": "0029_noisy_firebrand",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1790233071577,
+      "tag": "0030_wild_vengeance",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1790233309268,
+      "tag": "0031_glorious_caretaker",
+      "breakpoints": true
     }
   ]
 }

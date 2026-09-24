@@ -5,6 +5,7 @@ import {
   subscriptionPlans,
   subscriptionFeatures,
   users,
+  locations,
   profiles,
   userSessions,
   otpVerifications,
@@ -89,10 +90,18 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   otpVerifications: many(otpVerifications),
 }));
 
+export const locationsRelations = relations(locations, ({ many }) => ({
+  users: many(users),
+}));
+
 export const profilesRelations = relations(profiles, ({ many, one }) => ({
   user: one(users, {
     fields: [profiles.userId],
     references: [users.id],
+  }),
+  location: one(locations, {
+    fields: [profiles.locationId],
+    references: [locations.id],
   }),
   languages: one(profileLanguages),
   interests: many(profileInterests),

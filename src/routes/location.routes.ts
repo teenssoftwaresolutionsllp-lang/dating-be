@@ -15,9 +15,7 @@ const router = Router();
 router.get(
   "/locations/popular",
   authenticate,
-  asyncHandler(
-    LocationController.getPopularLocations.bind(LocationController),
-  ),
+  asyncHandler(LocationController.getPopularLocations.bind(LocationController)),
 );
 
 router.post(

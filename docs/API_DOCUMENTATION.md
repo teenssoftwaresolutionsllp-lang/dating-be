@@ -1876,20 +1876,20 @@ removed `users.onboarding_step` or `users.onboarding_completed_at` columns.
 
 ## 13. Current Database Tables Used by Onboarding
 
-| Table                | Purpose                                                                    |
-| -------------------- | -------------------------------------------------------------------------- |
-| `users`              | Account, authentication, and status data                                   |
-| `user_sessions`      | Authenticated sessions                                                     |
-| `profiles`           | Core profile details, religion, and the selected location reference         |
+| Table                | Purpose                                                                       |
+| -------------------- | ----------------------------------------------------------------------------- |
+| `users`              | Account, authentication, and status data                                      |
+| `user_sessions`      | Authenticated sessions                                                        |
+| `profiles`           | Core profile details, religion, and the selected location reference           |
 | `locations`          | Canonical Google Place and coordinate rows used by profile location selection |
-| `languages`          | Predefined language master data                                            |
-| `profile_languages`  | User-language relationships                                                |
-| `education`          | Education level and qualification                                          |
-| `kyc_verifications`  | Hashed KYC data, document image metadata, and status                       |
-| `profile_photos`     | Cloudinary profile photo metadata                                          |
-| `interests`          | Predefined interest master data                                            |
-| `profile_interests`  | User-interest relationships                                                |
-| `dating_preferences` | Age, distance, gender, religion, intention, and preferred-interest filters |
+| `languages`          | Predefined language master data                                               |
+| `profile_languages`  | User-language relationships                                                   |
+| `education`          | Education level and qualification                                             |
+| `kyc_verifications`  | Hashed KYC data, document image metadata, and status                          |
+| `profile_photos`     | Cloudinary profile photo metadata                                             |
+| `interests`          | Predefined interest master data                                               |
+| `profile_interests`  | User-interest relationships                                                   |
+| `dating_preferences` | Age, distance, gender, religion, intention, and preferred-interest filters    |
 
 ## 14. Known Limitations
 

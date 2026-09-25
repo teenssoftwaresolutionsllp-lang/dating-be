@@ -14,7 +14,14 @@ export const saveLocationSchema = z
   })
   .strict();
 
+export const selectLocationSchema = z
+  .object({
+    locationId: z.uuid(),
+  })
+  .strict();
+
 export type LocationAutocompleteInput = z.infer<
   typeof locationAutocompleteSchema
 >;
 export type SaveLocationInput = z.infer<typeof saveLocationSchema>;
+export type SelectLocationInput = z.infer<typeof selectLocationSchema>;

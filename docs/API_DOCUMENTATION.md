@@ -23,7 +23,8 @@ The API currently supports:
 - access-token authentication
 - refresh-token sessions
 - profile onboarding
-- languages and interests reference data
+- Google Places-based location selection and search
+- seeded popular-location suggestions
 - profile language selection
 - education
 - KYC document-photo submission with temporary automatic verification
@@ -102,7 +103,13 @@ CLOUDINARY_API_KEY=your_api_key
 CLOUDINARY_API_SECRET=your_api_secret
 ```
 
-Replace the placeholder values with real Cloudinary credentials before testing uploads. Never expose `CLOUDINARY_API_SECRET` to the frontend or commit it to source control.
+For Google Places autocomplete and place-details calls, configure:
+
+```env
+GOOGLE_MAPS_API_KEY=your_google_maps_api_key
+```
+
+Replace the placeholder values with real credentials before testing uploads or location search. Never expose `CLOUDINARY_API_SECRET` or the Google API key to the frontend or commit them to source control.
 
 ## 4. Common Headers
 
@@ -188,6 +195,184 @@ Use this order to test the complete currently implemented flow:
 
 The completion request will report `PHOTOS` as missing until at least one profile photo is uploaded to Cloudinary. KYC is temporarily marked
 `verified` after a successful document-photo upload.
+
+### 6.1 Location selection and Google Places APIs
+
+The canonical location model is a `locations` record referenced by `profiles.location_id`. Do not store a second copy of city/state/country in the profile update route. Use the dedicated location endpoints below.
+
+#### 6.1.1 Get popular seeded locations
+
+```http
+GET {{baseUrl}}/api/v1/locations/popular
+Authorization: Bearer {{accessToken}}
+```
+
+Purpose:
+
+- returns the popular city list seeded in the backend
+- supports direct selection before Google search
+- each item includes the internal `locationId` and display `name`
+
+Example response:
+
+```json
+{
+  "success": true,
+  "statusCode": 200,
+  "message": "Success",
+  "data": [
+    { "locationId": "2a6e4de2-1a44-42f0-9bfe-0e2060f7aa12", "name": "London" },
+    { "locationId": "9ec6d566-92f1-46ec-9e61-fd4c1d0d7762", "name": "Paris" },
+    { "locationId": "fab4bc20-7b0d-4b8b-b3e7-2bc6ad5ab178", "name": "New York" }
+  ]
+}
+```
+
+#### 6.1.2 Select a popular location for the authenticated user
+
+```http
+POST {{baseUrl}}/api/v1/users/me/location/selection
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{
+  "locationId": "2a6e4de2-1a44-42f0-9bfe-0e2060f7aa12"
+}
+```
+
+Example response:
+
+```json
+{
+  "success": true,
+  "statusCode": 200,
+  "message": "Location selected successfully",
+  "data": {
+    "locationId": "2a6e4de2-1a44-42f0-9bfe-0e2060f7aa12",
+    "googlePlaceId": "ChIJdd4hrwug2EcRmSrV3Vo6llI",
+    "name": "London",
+    "city": "London",
+    "state": "England",
+    "country": "United Kingdom",
+    "latitude": 51.5072,
+    "longitude": -0.1276
+  }
+}
+```
+
+#### 6.1.3 Search Google Places suggestions
+
+```http
+POST {{baseUrl}}/api/v1/locations/autocomplete
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{
+  "input": "paris",
+  "sessionToken": "0d7c59eb-1639-4771-b1f9-9e51b1ac58d0"
+}
+```
+
+Validation:
+
+- `input` must be a string with at least 2 characters
+- `sessionToken` must be a valid UUID
+
+Example response:
+
+```json
+{
+  "success": true,
+  "statusCode": 200,
+  "message": "Success",
+  "data": [
+    {
+      "placeId": "ChIJ3S-JXm0fTHEFJvTP7Y0g7oQ",
+      "text": "Paris, France",
+      "mainText": "Paris",
+      "secondaryText": "France"
+    }
+  ]
+}
+```
+
+The autocomplete result is merged with seeded locations and deduplicated by place ID.
+
+#### 6.1.4 Save a Google Place to the authenticated user profile
+
+```http
+POST {{baseUrl}}/api/v1/users/me/location
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{
+  "placeId": "ChIJ3S-JXm0fTHEFJvTP7Y0g7oQ",
+  "sessionToken": "0d7c59eb-1639-4771-b1f9-9e51b1ac58d0"
+}
+```
+
+Example response:
+
+```json
+{
+  "success": true,
+  "statusCode": 200,
+  "message": "Location saved successfully",
+  "data": {
+    "locationId": "3efbfc81-6d3d-494f-92ca-0d55729d5d7b",
+    "googlePlaceId": "ChIJ3S-JXm0fTHEFJvTP7Y0g7oQ",
+    "name": "Paris",
+    "city": "Paris",
+    "state": "Île-de-France",
+    "country": "France",
+    "latitude": 48.8566,
+    "longitude": 2.3522
+  }
+}
+```
+
+This route creates or reuses the canonical `locations` row and stores the selected place on `profiles.location_id`.
+
+#### 6.1.5 Get the authenticated user's saved location
+
+```http
+GET {{baseUrl}}/api/v1/users/me/location
+Authorization: Bearer {{accessToken}}
+```
+
+Example response:
+
+```json
+{
+  "success": true,
+  "statusCode": 200,
+  "message": "Success",
+  "data": {
+    "locationId": "3efbfc81-6d3d-494f-92ca-0d55729d5d7b",
+    "googlePlaceId": "ChIJ3S-JXm0fTHEFJvTP7Y0g7oQ",
+    "name": "Paris",
+    "city": "Paris",
+    "state": "Île-de-France",
+    "country": "France",
+    "latitude": 48.8566,
+    "longitude": 2.3522
+  }
+}
+```
+
+If no location has been saved yet, the API returns a 404 with code `LOCATION_NOT_SET`.
 
 ## 7. Health and Root Routes
 
@@ -1012,17 +1197,7 @@ Example relationship body:
 }
 ```
 
-Example location body:
-
-```json
-{
-  "city": "Kolkata",
-  "state": "West Bengal",
-  "country": "India",
-  "latitude": 22.5726,
-  "longitude": 88.3639
-}
-```
+Location should not be submitted here. The current canonical API is the dedicated location flow in section 6.1.
 
 Optional supported profile fields:
 
@@ -1033,11 +1208,6 @@ Optional supported profile fields:
   "gender": "male",
   "heightCm": 175,
   "religion": "Hindu",
-  "city": "Kolkata",
-  "state": "West Bengal",
-  "country": "India",
-  "latitude": 22.5726,
-  "longitude": 88.3639,
   "relationshipStatus": "single",
   "bio": "Short profile biography"
 }
@@ -1052,7 +1222,7 @@ Validation:
 - text lengths are limited
 - `dateOfBirth` is nullable while onboarding is in progress
 - `religion` is optional and stores the user's own religion
-- location is stored in structured city/state/country and coordinate fields
+- location is stored through the dedicated `locations` table and `profiles.location_id`, not in profile update fields
 
 Expected response:
 
@@ -1710,7 +1880,8 @@ removed `users.onboarding_step` or `users.onboarding_completed_at` columns.
 | -------------------- | -------------------------------------------------------------------------- |
 | `users`              | Account, authentication, and status data                                   |
 | `user_sessions`      | Authenticated sessions                                                     |
-| `profiles`           | Core profile details, religion, and structured location                    |
+| `profiles`           | Core profile details, religion, and the selected location reference         |
+| `locations`          | Canonical Google Place and coordinate rows used by profile location selection |
 | `languages`          | Predefined language master data                                            |
 | `profile_languages`  | User-language relationships                                                |
 | `education`          | Education level and qualification                                          |
@@ -1726,7 +1897,7 @@ removed `users.onboarding_step` or `users.onboarding_completed_at` columns.
 2. Languages and interests require master data to be inserted before selection requests can succeed.
 3. Profile photos are stored in Cloudinary; the local filesystem is not used for new profile photo uploads.
 4. KYC uploads are currently marked `verified` immediately. Admin or provider verification is not implemented yet.
-5. Location search and predefined location IDs are intentionally deferred; onboarding stores structured location fields and optional coordinates.
+5. Google Places and seeded location APIs require a valid `GOOGLE_MAPS_API_KEY` in the server environment.
 6. The current documentation reflects the implemented API and should be updated whenever a new route is added.
 
 ## 15. Implementation Verification

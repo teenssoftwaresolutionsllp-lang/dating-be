@@ -4,9 +4,21 @@ import { authenticate } from "../middleware/auth.middleware";
 import { asyncHandler } from "../middleware/error.middleware";
 import { locationAutocompleteRateLimit } from "../middleware/location-rate-limit.middleware";
 import { validateBody } from "../middleware/validation.middleware";
-import { locationAutocompleteSchema, saveLocationSchema } from "../validation";
+import {
+  locationAutocompleteSchema,
+  saveLocationSchema,
+  selectLocationSchema,
+} from "../validation";
 
 const router = Router();
+
+router.get(
+  "/locations/popular",
+  authenticate,
+  asyncHandler(
+    LocationController.getPopularLocations.bind(LocationController),
+  ),
+);
 
 router.post(
   "/locations/autocomplete",
@@ -21,6 +33,13 @@ router.post(
   authenticate,
   validateBody(saveLocationSchema),
   asyncHandler(LocationController.saveLocation.bind(LocationController)),
+);
+
+router.post(
+  "/users/me/location/selection",
+  authenticate,
+  validateBody(selectLocationSchema),
+  asyncHandler(LocationController.selectLocation.bind(LocationController)),
 );
 
 router.get(

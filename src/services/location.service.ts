@@ -16,12 +16,18 @@ export interface NormalizedLocation {
 
 export interface SavedLocation {
   locationId: string;
+  googlePlaceId: string;
   name: string | null;
   city: string | null;
   state: string | null;
   country: string | null;
   latitude: number;
   longitude: number;
+}
+
+export interface PopularLocation {
+  locationId: string;
+  name: string | null;
 }
 
 const invalidPlace = (): AppError => {
@@ -75,6 +81,7 @@ export const normalizePlaceDetails = (
 
 const toSavedLocation = (location: Location): SavedLocation => ({
   locationId: location.id,
+  googlePlaceId: location.googlePlaceId,
   name: location.name,
   city: location.city,
   state: location.state,
@@ -84,6 +91,28 @@ const toSavedLocation = (location: Location): SavedLocation => ({
 });
 
 class LocationService {
+  async getPopularLocations(): Promise<PopularLocation[]> {
+    const seededLocations = await db
+      .select()
+      .from(locations)
+      .orderBy(locations.city)
+      .limit(50);
+
+    return seededLocations.map((location) => ({
+      locationId: location.id,
+      name: location.name,
+    }));
+  }
+
+  async findByGooglePlaceId(googlePlaceId: string): Promise<Location | null> {
+    const [location] = await db
+      .select()
+      .from(locations)
+      .where(eq(locations.googlePlaceId, googlePlaceId));
+
+    return location ?? null;
+  }
+
   async searchLocations(input: string) {
     const pattern = `%${input}%`;
     const seededLocations = await db
@@ -173,6 +202,51 @@ class LocationService {
         .update(profiles)
         .set({ locationId: location.id, updatedAt: new Date() })
         .where(eq(profiles.id, profile.id));
+
+      return toSavedLocation(location);
+    });
+  }
+
+  async selectLocation(
+    userId: string,
+    locationId: string,
+  ): Promise<SavedLocation> {
+    return db.transaction(async (transaction) => {
+      const [location] = await transaction
+        .select()
+        .from(locations)
+        .where(eq(locations.id, locationId));
+
+      if (!location) {
+        const error = new Error("Location not found") as AppError;
+        error.statusCode = 404;
+        error.code = "LOCATION_NOT_FOUND";
+        throw error;
+      }
+
+      const [profile] = await transaction
+        .select({ id: profiles.id })
+        .from(profiles)
+        .where(eq(profiles.userId, userId));
+
+      if (!profile) {
+        const error = new Error(
+          "Complete basic profile details first",
+        ) as AppError;
+        error.statusCode = 400;
+        error.code = "PROFILE_REQUIRED";
+        throw error;
+      }
+
+      await transaction
+        .update(profiles)
+        .set({ locationId: location.id, updatedAt: new Date() })
+        .where(eq(profiles.id, profile.id));
+
+      await transaction
+        .update(users)
+        .set({ updatedAt: new Date() })
+        .where(eq(users.id, userId));
 
       return toSavedLocation(location);
     });

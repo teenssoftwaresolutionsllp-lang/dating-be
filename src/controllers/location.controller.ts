@@ -8,6 +8,14 @@ import ApiResponse from "../utils/response";
 const getUserId = (req: Request): string | undefined => req.user?.userId;
 
 class LocationController {
+  async getPopularLocations(_req: Request, res: Response): Promise<Response> {
+    const locations = await LocationService.getPopularLocations();
+
+    return ApiResponse.success(res, {
+      data: locations,
+    });
+  }
+
   async autocomplete(req: Request, res: Response): Promise<Response> {
     const [seededSuggestions, googleSuggestions] = await Promise.all([
       LocationService.searchLocations(req.body.input),
@@ -41,18 +49,55 @@ class LocationController {
       });
     }
 
-    const details = await GooglePlacesService.getPlaceDetails(
+    const existingLocation = await LocationService.findByGooglePlaceId(
       req.body.placeId,
-      req.body.sessionToken,
     );
+    const normalizedLocation = existingLocation
+      ? {
+          googlePlaceId: existingLocation.googlePlaceId,
+          name: existingLocation.name,
+          city: existingLocation.city,
+          state: existingLocation.state,
+          country: existingLocation.country,
+          latitude: existingLocation.latitude,
+          longitude: existingLocation.longitude,
+        }
+      : normalizePlaceDetails(
+          await GooglePlacesService.getPlaceDetails(
+            req.body.placeId,
+            req.body.sessionToken,
+          ),
+        );
     const location = await LocationService.saveLocation(
       userId,
-      normalizePlaceDetails(details),
+      normalizedLocation,
     );
 
     return ApiResponse.success(res, {
       statusCode: 200,
       message: "Location saved successfully",
+      data: location,
+    });
+  }
+
+  async selectLocation(req: Request, res: Response): Promise<Response> {
+    const userId = getUserId(req);
+    if (!userId) {
+      return ApiResponse.error(res, {
+        statusCode: 401,
+        message: "Unauthorized: User not authenticated",
+        code: "UNAUTHORIZED",
+      });
+    }
+
+    const location = await LocationService.selectLocation(
+      userId,
+      req.body.locationId,
+    );
+
+    return ApiResponse.success(res, {
+      statusCode: 200,
+      message: "Location selected successfully",
       data: location,
     });
   }

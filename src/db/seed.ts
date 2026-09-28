@@ -1,6 +1,7 @@
 import "dotenv/config";
 import bcrypt from "bcryptjs";
 import { db, pool } from "./index";
+
 import {
   languages,
   interests,
@@ -18,13 +19,6 @@ import {
   kycVerifications,
   profilePhotos,
   datingPreferences,
-  swipes,
-  swipeEvents,
-  matches,
-  conversations,
-  conversationMembers,
-  messages,
-  messageReads,
   subscriptions,
   payments,
   featureUsage,
@@ -121,7 +115,7 @@ const seedLocations = async (): Promise<void> => {
  * DATABASE SEED SCRIPT (Strict Topological Order)
  * ============================================================================
  * Seeds the database with production-grade master catalogs, subscription tiers,
- * test users, verified profiles, swipes, matches, and chat conversations.
+ * test users, verified profiles, and subscription data.
  */
 
 async function seed() {
@@ -608,121 +602,11 @@ async function seed() {
     }
 
     // ------------------------------------------------------------------------
-    // STEP 5: SWIPES, MATCHES, CHAT & MONETIZATION
+    // STEP 5: MONETIZATION
     // ------------------------------------------------------------------------
-    console.log(
-      "💬 5/5 Seeding mutual match, conversation, and subscription...",
-    );
+    console.log("💳 5/5 Seeding subscription and payment data...");
 
     if (userAarav && userAnanya) {
-      // Swipes
-      await db
-        .insert(swipes)
-        .values([
-          {
-            userId: userAarav.id,
-            targetUserId: userAnanya.id,
-            action: "like",
-            source: "discovery",
-          },
-          {
-            userId: userAnanya.id,
-            targetUserId: userAarav.id,
-            action: "like",
-            source: "discovery",
-          },
-        ])
-        .onConflictDoNothing();
-
-      await db
-        .insert(swipeEvents)
-        .values([
-          {
-            userId: userAarav.id,
-            targetUserId: userAnanya.id,
-            action: "like",
-            source: "discovery",
-          },
-          {
-            userId: userAnanya.id,
-            targetUserId: userAarav.id,
-            action: "like",
-            source: "discovery",
-          },
-        ])
-        .onConflictDoNothing();
-
-      // Canonical match ordering (user1_id < user2_id)
-      const [u1, u2] =
-        userAarav.id < userAnanya.id
-          ? [userAarav.id, userAnanya.id]
-          : [userAnanya.id, userAarav.id];
-
-      const [sampleMatch] = await db
-        .insert(matches)
-        .values({
-          user1Id: u1,
-          user2Id: u2,
-          status: "active",
-          lastActivityAt: new Date(),
-        })
-        .onConflictDoNothing()
-        .returning();
-
-      if (sampleMatch) {
-        const [chatConv] = await db
-          .insert(conversations)
-          .values({
-            matchId: sampleMatch.id,
-          })
-          .onConflictDoNothing()
-          .returning();
-
-        if (chatConv) {
-          await db
-            .insert(conversationMembers)
-            .values([
-              { conversationId: chatConv.id, userId: userAarav.id },
-              { conversationId: chatConv.id, userId: userAnanya.id },
-            ])
-            .onConflictDoNothing();
-
-          const [msg1] = await db
-            .insert(messages)
-            .values({
-              conversationId: chatConv.id,
-              senderId: userAarav.id,
-              messageType: "text",
-              content:
-                "Hey Ananya! Loved your photography shots. Where was that sunset photo taken?",
-            })
-            .onConflictDoNothing()
-            .returning();
-
-          if (msg1) {
-            await db
-              .insert(messageReads)
-              .values({
-                messageId: msg1.id,
-                userId: userAnanya.id,
-                readAt: new Date(),
-              })
-              .onConflictDoNothing();
-          }
-
-          await db
-            .insert(messages)
-            .values({
-              conversationId: chatConv.id,
-              senderId: userAnanya.id,
-              messageType: "text",
-              content:
-                "Hi Aarav! That was at Nandi Hills last weekend early morning 😊",
-            })
-            .onConflictDoNothing();
-        }
-      }
-
       // Sample Subscription & Payment for Aarav
       if (planGold) {
         const [sub] = await db

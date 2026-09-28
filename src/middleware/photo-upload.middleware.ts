@@ -8,27 +8,38 @@ const allowedMimeTypes = new Set([
   "image/jpg",
   "image/png",
   "image/webp",
+  "image/heic",
+  "image/heif",
+  "image/avif",
+  "image/gif",
+  "image/bmp",
+  "application/octet-stream",
 ]);
-const allowedExtensions = new Set([".jpg", ".jpeg", ".png", ".webp"]);
+const allowedExtensions = new Set([
+  ".jpg",
+  ".jpeg",
+  ".png",
+  ".webp",
+  ".heic",
+  ".heif",
+  ".avif",
+  ".gif",
+  ".bmp",
+]);
 
 export const uploadProfilePhoto = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 5 * 1024 * 1024,
+    fileSize: 10 * 1024 * 1024,
     files: 10,
   },
   fileFilter: (_req, file, callback) => {
     const extension = path.extname(file.originalname).toLowerCase();
-    const hasAllowedMimeType = allowedMimeTypes.has(file.mimetype);
-    const hasAllowedExtension = allowedExtensions.has(extension);
-    const isGenericPostmanMimeType =
-      file.mimetype === "application/octet-stream";
+    const isImageMime = file.mimetype.startsWith("image/") || allowedMimeTypes.has(file.mimetype);
+    const hasAllowedExtension = allowedExtensions.has(extension) || !extension;
 
-    if (
-      !hasAllowedMimeType &&
-      !(isGenericPostmanMimeType && hasAllowedExtension)
-    ) {
-      callback(new Error("Only JPEG, PNG, and WebP images are allowed"));
+    if (!isImageMime && !hasAllowedExtension) {
+      callback(new Error("Only image files are allowed"));
       return;
     }
 

@@ -77,7 +77,7 @@ export const kycVerifications = pgTable(
     documentImageUrl: text("document_image_url"),
     status: varchar("status", { length: 20 }).default("pending").notNull(), // pending, verified, rejected
     provider: varchar("provider", { length: 50 }),
-    providerReference: varchar("provider_reference", { length: 150 }),
+    providerReference: text("provider_reference"),
     submittedAt: timestamp("submitted_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

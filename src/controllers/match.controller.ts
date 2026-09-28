@@ -195,6 +195,66 @@ export class MatchController {
   }
 
   /**
+   * GET /api/v1/matches/sent-likes
+   * Get list of users the current user liked (You Liked tab)
+   */
+  static async getSentLikes(req: Request, res: Response): Promise<Response> {
+    const userId = await resolveUserId(req);
+
+    if (!userId) {
+      return ApiResponse.error(res, {
+        statusCode: 400,
+        message: "No active user found in database.",
+        code: "NO_USER_FOUND",
+      });
+    }
+
+    const page = parseInt((req.query.page as string) || "1", 10);
+    const limit = parseInt((req.query.limit as string) || "20", 10);
+
+    const result = await MatchService.getSentLikes({ userId, page, limit });
+
+    return ApiResponse.success(res, {
+      statusCode: 200,
+      message: "Sent likes retrieved successfully",
+      data: result.items,
+      meta: {
+        activeUserId: userId,
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+      },
+    });
+  }
+
+  /**
+   * GET /api/v1/matches/people-categories
+   * Get categorized candidates for People screen (Active, Near You, You May Like, etc.)
+   */
+  static async getPeopleCategories(req: Request, res: Response): Promise<Response> {
+    const userId = await resolveUserId(req);
+
+    if (!userId) {
+      return ApiResponse.error(res, {
+        statusCode: 400,
+        message: "No active user found in database.",
+        code: "NO_USER_FOUND",
+      });
+    }
+
+    const result = await MatchService.getPeopleCategories({ userId });
+
+    return ApiResponse.success(res, {
+      statusCode: 200,
+      message: "People categories retrieved successfully",
+      data: result,
+      meta: {
+        activeUserId: userId,
+      },
+    });
+  }
+
+  /**
    * POST /api/v1/matches/:matchId/chat
    * Voluntarily initiate / get a chat conversation with a match
    */

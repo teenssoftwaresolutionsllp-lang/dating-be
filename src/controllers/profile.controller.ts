@@ -254,6 +254,83 @@ export class ProfileController {
     });
   }
 
+  static async verifyKycDocument(req: Request, res: Response): Promise<Response> {
+    const userId = getUserId(req);
+    if (!userId) {
+      return ApiResponse.error(res, {
+        statusCode: 401,
+        message: "Unauthorized: User not authenticated",
+        code: "UNAUTHORIZED",
+      });
+    }
+
+    const result = await ProfileService.validateKycDoc(
+      req.body.documentType || "Aadhaar Card",
+      req.file
+        ? { buffer: req.file.buffer, originalName: req.file.originalname }
+        : undefined,
+    );
+
+    return ApiResponse.success(res, {
+      statusCode: 200,
+      message: result.message,
+      data: result,
+    });
+  }
+
+  static async verifySelfie(req: Request, res: Response): Promise<Response> {
+    const userId = getUserId(req);
+    if (!userId) {
+      return ApiResponse.error(res, {
+        statusCode: 401,
+        message: "Unauthorized: User not authenticated",
+        code: "UNAUTHORIZED",
+      });
+    }
+
+    const result = await ProfileService.validateSelfieDoc(
+      req.file
+        ? { buffer: req.file.buffer, originalName: req.file.originalname }
+        : undefined,
+    );
+
+    return ApiResponse.success(res, {
+      statusCode: 200,
+      message: result.message,
+      data: result,
+    });
+  }
+
+  static async validateSinglePhoto(req: Request, res: Response): Promise<Response> {
+    const userId = getUserId(req);
+    if (!userId) {
+      return ApiResponse.error(res, {
+        statusCode: 401,
+        message: "Unauthorized: User not authenticated",
+        code: "UNAUTHORIZED",
+      });
+    }
+
+    const isPrimary =
+      req.body.isPrimary === "true" ||
+      req.body.isPrimary === true ||
+      req.body.isPrimary === 1;
+
+    const result = await ProfileService.validateSinglePhoto(
+      userId,
+      req.file
+        ? { buffer: req.file.buffer, originalName: req.file.originalname }
+        : undefined,
+      isPrimary,
+    );
+
+    return ApiResponse.success(res, {
+      statusCode: 200,
+      message: result.message,
+      data: result,
+    });
+  }
+
   static async submitKyc(req: Request, res: Response): Promise<Response> {
     const userId = getUserId(req);
 
@@ -265,12 +342,19 @@ export class ProfileController {
       });
     }
 
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+    const documentFile = files?.["documentPhoto"]?.[0] || req.file;
+    const selfieFile = files?.["selfiePhoto"]?.[0];
+
     const kyc = await ProfileService.submitKyc(
       userId,
-      req.body.documentType,
+      req.body.documentType || "Aadhaar Card",
       req.body.documentNumber,
-      req.file
-        ? { buffer: req.file.buffer, originalName: req.file.originalname }
+      documentFile
+        ? { buffer: documentFile.buffer, originalName: documentFile.originalname }
+        : undefined,
+      selfieFile
+        ? { buffer: selfieFile.buffer, originalName: selfieFile.originalname }
         : undefined,
     );
 

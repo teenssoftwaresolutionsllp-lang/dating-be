@@ -72,11 +72,32 @@ router.patch(
   asyncHandler(ProfileController.updateEducation),
 );
 
-// Submit KYC data; the service stores only a hash of the document number.
+// Pre-validate Government ID document photo in real-time
+router.post(
+  "/kyc/verify-document",
+  authenticate,
+  uploadProfilePhoto.single("documentPhoto"),
+  handlePhotoUploadError,
+  asyncHandler(ProfileController.verifyKycDocument),
+);
+
+// Pre-validate live selfie photo in real-time
+router.post(
+  "/kyc/verify-selfie",
+  authenticate,
+  uploadProfilePhoto.single("selfiePhoto"),
+  handlePhotoUploadError,
+  asyncHandler(ProfileController.verifySelfie),
+);
+
+// Submit KYC data; the service validates both document and selfie, stores hash of document.
 router.post(
   "/kyc",
   authenticate,
-  uploadProfilePhoto.single("documentPhoto"),
+  uploadProfilePhoto.fields([
+    { name: "documentPhoto", maxCount: 1 },
+    { name: "selfiePhoto", maxCount: 1 },
+  ]),
   handlePhotoUploadError,
   validateBody(kycSchema),
   asyncHandler(ProfileController.submitKyc),
@@ -84,6 +105,15 @@ router.post(
 
 // Return the authenticated user's safe KYC status without sensitive data.
 router.get("/kyc", authenticate, asyncHandler(ProfileController.getKyc));
+
+// Pre-validate a single profile photo (checks face + KYC selfie match if isPrimary=true, allows lifestyle if isPrimary=false)
+router.post(
+  "/photos/validate-photo",
+  authenticate,
+  uploadProfilePhoto.single("photo"),
+  handlePhotoUploadError,
+  asyncHandler(ProfileController.validateSinglePhoto),
+);
 
 // Upload a profile image to Cloudinary and save its metadata in PostgreSQL.
 router.post(

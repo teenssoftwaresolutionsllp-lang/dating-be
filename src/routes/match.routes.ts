@@ -10,6 +10,9 @@ const router = Router();
 // GET /api/v1/matches/feed — Get candidate cards with Trust Score %
 router.get("/feed", asyncHandler(MatchController.getDiscoveryFeed));
 
+// GET /api/v1/matches/people-categories — Get categorized candidates for People screen
+router.get("/people-categories", asyncHandler(MatchController.getPeopleCategories));
+
 // =================================================================
 // Swipe Actions
 // =================================================================
@@ -29,10 +32,13 @@ router.post("/:matchId/chat", asyncHandler(MatchController.startChat));
 router.delete("/:matchId", asyncHandler(MatchController.unmatch));
 
 // =================================================================
-// Likes Tab (Who liked me)
+// Likes Tab (Who liked me / You Liked)
 // =================================================================
-// GET /api/v1/matches/likes — Get list of admirers who liked current user
+// GET /api/v1/matches/likes — Get list of admirers who liked current user (Liked You)
 router.get("/likes", asyncHandler(MatchController.getLikesReceived));
+
+// GET /api/v1/matches/sent-likes — Get list of users the current user liked (You Liked)
+router.get("/sent-likes", asyncHandler(MatchController.getSentLikes));
 
 // =================================================================
 // Safety (Block & Report)

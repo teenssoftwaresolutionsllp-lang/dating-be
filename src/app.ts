@@ -1,5 +1,4 @@
-import "dotenv/config";
-
+import path from "node:path";
 import express, { type Express, type Request, type Response } from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -9,26 +8,25 @@ import authRoutes from "./routes/auth.routes";
 import profileRoutes from "./routes/profile.routes";
 import matchRoutes from "./routes/match.routes";
 import messageRoutes from "./routes/message.routes";
-import { errorHandler, notFoundHandler } from "./middleware/error.middleware";
+import { notFoundHandler, errorHandler } from "./middleware/error.middleware";
 
 const app: Express = express();
 
 // Security and utility middleware
+app.use(cors());
 app.use(
-  cors({
-    origin:
-      process.env.CORS_ORIGIN?.split(",").map((origin) => origin.trim()) ||
-      true,
-    credentials: true,
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
   }),
 );
-app.use(helmet());
 if (process.env.NODE_ENV !== "test") {
   app.use(morgan("dev"));
 }
-
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Serve static uploads
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 // Root & Health Check
 app.get("/", (_req: Request, res: Response) => {
@@ -36,25 +34,35 @@ app.get("/", (_req: Request, res: Response) => {
     success: true,
     message: "Dating App Backend is running 🚀",
     version: "1.0.0",
-    docs: "/api/v1/auth",
+    docs: "/api/v1/matches",
   });
 });
 
-app.get("/api/health", (_req: Request, res: Response) => {
+app.get(["/api/health", "/api/v1/health"], (_req: Request, res: Response) => {
   res.json({
     success: true,
     message: "API is healthy ❤️",
     timestamp: new Date().toISOString(),
   });
 });
-// API Routes
 
-//authentication routes
+app.get("/favicon.ico", (_req: Request, res: Response) => {
+  res.status(204).end();
+});
+
+// =================================================================
+// API Routes (v1)
+// =================================================================
+// Authentication
 app.use("/api/v1/auth", authRoutes);
 
-//profile creation routes
+// Profile & Onboarding
 app.use("/api/v1/profile", profileRoutes);
+
+// Matches, Discovery & Swiping
 app.use("/api/v1/matches", matchRoutes);
+
+// Messaging & Chat
 app.use("/api/v1/messages", messageRoutes);
 
 // =================================================================

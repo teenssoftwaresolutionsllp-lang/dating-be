@@ -38,6 +38,10 @@ export type ProfileUpdate = Partial<
     | "longitude"
     | "locationUpdatedAt"
     | "relationshipStatus"
+    | "foodPreference"
+    | "drinking"
+    | "smoking"
+    | "vibes"
     | "bio"
   >
 >;
@@ -244,6 +248,7 @@ class ProfileRepository {
       storageKey: string;
       url: string;
     },
+    selfieUrl?: string,
   ): Promise<KycVerification> {
     return db.transaction(async (transaction) => {
       const now = new Date();
@@ -255,6 +260,7 @@ class ProfileRepository {
           documentNumberHash,
           documentImageStorageKey: documentImage?.storageKey,
           documentImageUrl: documentImage?.url,
+          providerReference: selfieUrl,
           status: "verified",
           verifiedAt: now,
           updatedAt: now,
@@ -270,6 +276,7 @@ class ProfileRepository {
                   documentImageUrl: documentImage.url,
                 }
               : {}),
+            ...(selfieUrl ? { providerReference: selfieUrl } : {}),
             status: "verified",
             verifiedAt: now,
             rejectionReason: null,
@@ -569,8 +576,8 @@ class ProfileRepository {
           .insert(profiles)
           .values({
             userId,
-            name: values.name!,
-            gender: values.gender!,
+            name: values.name || "User",
+            gender: values.gender || "other",
             ...values,
           })
           .returning();

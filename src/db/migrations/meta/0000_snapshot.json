@@ -1,6 +1,6 @@
 {
-  "id": "feffbde0-a9a3-4c71-8333-00b4f5074bb3",
-  "prevId": "6fa491ee-345b-4bdd-b028-c3c8026aa161",
+  "id": "b73bce2d-7719-480c-a3aa-d87d50e79425",
+  "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1990,22 +1990,22 @@
         "profile_id": {
           "name": "profile_id",
           "type": "uuid",
-          "primaryKey": false,
+          "primaryKey": true,
           "notNull": true
         },
-        "language_id": {
-          "name": "language_id",
-          "type": "integer",
+        "language_ids": {
+          "name": "language_ids",
+          "type": "integer[]",
           "primaryKey": false,
           "notNull": true
         }
       },
       "indexes": {
-        "profile_languages_language_id_idx": {
-          "name": "profile_languages_language_id_idx",
+        "profile_languages_language_ids_gin_idx": {
+          "name": "profile_languages_language_ids_gin_idx",
           "columns": [
             {
-              "expression": "language_id",
+              "expression": "language_ids",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -2013,7 +2013,7 @@
           ],
           "isUnique": false,
           "concurrently": false,
-          "method": "btree",
+          "method": "gin",
           "with": {}
         }
       },
@@ -2030,30 +2030,9 @@
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
-        },
-        "profile_languages_language_id_languages_id_fk": {
-          "name": "profile_languages_language_id_languages_id_fk",
-          "tableFrom": "profile_languages",
-          "tableTo": "languages",
-          "columnsFrom": [
-            "language_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {
-        "profile_languages_profile_id_language_id_pk": {
-          "name": "profile_languages_profile_id_language_id_pk",
-          "columns": [
-            "profile_id",
-            "language_id"
-          ]
-        }
-      },
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},

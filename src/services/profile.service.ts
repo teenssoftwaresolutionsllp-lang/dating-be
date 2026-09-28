@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { createHash } from "node:crypto";
 import type { Language, Profile } from "../db/schema";
 import ProfileRepository, {
@@ -8,6 +10,11 @@ import {
   deleteCloudinaryAsset,
   uploadProfilePhoto,
 } from "./cloudinary.service";
+import {
+  validateKycDocument,
+  validateSelfiePhoto,
+  validateProfilePhoto,
+} from "../utils/image-validator";
 
 export const ONBOARDING_STEPS = [
   "BASIC_DETAILS",
@@ -33,8 +40,83 @@ const createNotFoundError = (message: string): AppError => {
 };
 
 class ProfileService {
+  /**
+   * Retrieves the user's verified KYC selfie image buffer from either remote Cloudinary CDN
+   * or local disk fallback storage.
+   */
+  private async getKycSelfieBuffer(userId: string): Promise<Buffer | undefined> {
+    const kyc = await ProfileRepository.findKycByUserId(userId);
+    if (!kyc?.providerReference) {
+      console.warn(`[ProfileService] No KYC providerReference found for user: ${userId}`);
+      return undefined;
+    }
+
+    const ref = kyc.providerReference.trim();
+    console.log(`[ProfileService] Retrieving KYC selfie for user ${userId} from: ${ref}`);
+
+    // Case 1: Remote HTTP/HTTPS URL
+    if (ref.startsWith("http://") || ref.startsWith("https://")) {
+      try {
+        const response = await fetch(ref);
+        if (response.ok) {
+          const arrayBuffer = await response.arrayBuffer();
+          const buffer = Buffer.from(arrayBuffer);
+          console.log(`[ProfileService] Successfully fetched remote KYC selfie (${buffer.length} bytes)`);
+          return buffer;
+        }
+      } catch (fetchErr) {
+        console.warn(`[ProfileService] Failed to fetch remote KYC selfie from ${ref}:`, fetchErr);
+      }
+    }
+
+    // Case 2: Local disk file path (e.g. /uploads/profiles/... or relative/absolute path)
+    try {
+      const cleanPath = ref.startsWith("/") ? ref.slice(1) : ref;
+      const candidates = [
+        ref,
+        path.join(process.cwd(), cleanPath),
+        path.join(process.cwd(), ref),
+        path.join(process.cwd(), "uploads", cleanPath.replace(/^uploads[\\\/]/, "")),
+      ];
+
+      for (const candidate of candidates) {
+        if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+          const buffer = await fs.promises.readFile(candidate);
+          console.log(`[ProfileService] Successfully loaded local KYC selfie from ${candidate} (${buffer.length} bytes)`);
+          return buffer;
+        }
+      }
+    } catch (fsErr) {
+      console.warn(`[ProfileService] Failed to read local KYC selfie file ${ref}:`, fsErr);
+    }
+
+    console.warn(`[ProfileService] Could not resolve KYC selfie image buffer from ref: ${ref}`);
+    return undefined;
+  }
+
   async addPhotos(userId: string, files: Express.Multer.File[]) {
+    // 1. Retrieve user's verified KYC selfie if available for face matching
+    const selfieBuffer = await this.getKycSelfieBuffer(userId);
     const existingPhotos = await ProfileRepository.findPhotosByUserId(userId);
+
+    // 2. Strict pre-upload validation: selfie matching strictly for primary photo (Slot 0)
+    for (const [index, file] of files.entries()) {
+      const isPrimary = existingPhotos.length === 0 && index === 0;
+      const validation = validateProfilePhoto(
+        file.buffer,
+        file.originalname,
+        selfieBuffer,
+        isPrimary
+      );
+      if (!validation.isValid) {
+        const error = new Error(validation.error || "Invalid profile photo") as AppError;
+        error.statusCode = 400;
+        error.code = validation.code || "INVALID_PROFILE_PHOTO";
+        throw error;
+      }
+    }
+
+
     const uploadedAssets: Array<{
       publicId: string;
       file: Express.Multer.File;
@@ -304,6 +386,7 @@ class ProfileService {
     documentType: string,
     documentNumber: string | undefined,
     documentImage?: { buffer: Buffer; originalName: string },
+    selfieImage?: { buffer: Buffer; originalName: string },
   ): Promise<{ status: string }> {
     const user = await ProfileRepository.findOnboardingStatus(userId);
     if (!user) {
@@ -315,6 +398,50 @@ class ProfileService {
       error.statusCode = 400;
       error.code = "KYC_DOCUMENT_PHOTO_REQUIRED";
       throw error;
+    }
+
+    // Validate Government ID document photo
+    const docValidation = await validateKycDocument(
+      documentImage.buffer,
+      documentImage.originalName,
+      documentType,
+    );
+    if (!docValidation.isValid) {
+      const error = new Error(docValidation.error || "Invalid government ID photo") as AppError;
+      error.statusCode = 400;
+      error.code = docValidation.code || "INVALID_KYC_DOCUMENT";
+      throw error;
+    }
+
+    // Validate Selfie photo if provided
+    if (selfieImage) {
+      const selfieValidation = validateSelfiePhoto(
+        selfieImage.buffer,
+        selfieImage.originalName,
+      );
+      if (!selfieValidation.isValid) {
+        const error = new Error(selfieValidation.error || "Invalid selfie photo") as AppError;
+        error.statusCode = 400;
+        error.code = selfieValidation.code || "INVALID_SELFIE";
+        throw error;
+      }
+    }
+
+    let selfieUrl: string | undefined;
+    let selfiePublicId: string | undefined;
+
+    if (selfieImage) {
+      try {
+        const selfieAsset = await uploadProfilePhoto(
+          selfieImage.buffer,
+          `${userId}-kyc-selfie`,
+          selfieImage.originalName,
+        );
+        selfieUrl = selfieAsset.secure_url;
+        selfiePublicId = selfieAsset.public_id;
+      } catch (selfieUploadError) {
+        console.warn("Failed to upload KYC selfie asset:", selfieUploadError);
+      }
     }
 
     const documentNumberHash = createHash("sha256")
@@ -332,17 +459,122 @@ class ProfileService {
         documentType,
         documentNumberHash,
         { storageKey: uploadedAsset.public_id, url: uploadedAsset.secure_url },
+        selfieUrl,
       );
 
       return { status: kyc.status };
     } catch (error) {
       try {
         await deleteCloudinaryAsset(uploadedAsset.public_id);
+        if (selfiePublicId) {
+          await deleteCloudinaryAsset(selfiePublicId);
+        }
       } catch (cleanupError) {
         console.error("Failed to clean up KYC document:", cleanupError);
       }
       throw error;
     }
+  }
+
+  async validateKycDoc(
+    documentType: string,
+    file?: { buffer: Buffer; originalName: string },
+  ): Promise<{ valid: boolean; message: string; metadata?: any }> {
+    if (!file) {
+      const error = new Error("Document photo is required for verification") as AppError;
+      error.statusCode = 400;
+      error.code = "DOCUMENT_PHOTO_REQUIRED";
+      throw error;
+    }
+
+    const validation = await validateKycDocument(
+      file.buffer,
+      file.originalName,
+      documentType,
+    );
+
+    if (!validation.isValid) {
+      const error = new Error(validation.error || "Invalid government ID photo") as AppError;
+      error.statusCode = 400;
+      error.code = validation.code || "INVALID_KYC_DOCUMENT";
+      throw error;
+    }
+
+    return {
+      valid: true,
+      message: "Government ID document photo verified successfully.",
+      metadata: validation.metadata,
+    };
+  }
+
+  async validateSelfieDoc(
+    file?: { buffer: Buffer; originalName: string },
+  ): Promise<{ valid: boolean; message: string; metadata?: any }> {
+    if (!file) {
+      const error = new Error("Selfie photo is required for verification") as AppError;
+      error.statusCode = 400;
+      error.code = "SELFIE_PHOTO_REQUIRED";
+      throw error;
+    }
+
+    const validation = validateSelfiePhoto(
+      file.buffer,
+      file.originalName,
+    );
+
+    if (!validation.isValid) {
+      const error = new Error(validation.error || "Invalid selfie photo") as AppError;
+      error.statusCode = 400;
+      error.code = validation.code || "INVALID_SELFIE";
+      throw error;
+    }
+
+    return {
+      valid: true,
+      message: "Selfie verified successfully.",
+      metadata: validation.metadata,
+    };
+  }
+
+  async validateSinglePhoto(
+    userId: string,
+    file?: { buffer: Buffer; originalName: string },
+    isPrimary: boolean = false,
+  ): Promise<{ valid: boolean; message: string; metadata?: any }> {
+    if (!file) {
+      const error = new Error("Photo file is required") as AppError;
+      error.statusCode = 400;
+      error.code = "PHOTO_REQUIRED";
+      throw error;
+    }
+
+    let selfieBuffer: Buffer | undefined;
+    if (isPrimary) {
+      selfieBuffer = await this.getKycSelfieBuffer(userId);
+      console.log(`[validateSinglePhoto] User ${userId}, isPrimary=${isPrimary}, selfieBuffer available: ${Boolean(selfieBuffer)}`);
+    }
+
+    const validation = validateProfilePhoto(
+      file.buffer,
+      file.originalName,
+      selfieBuffer,
+      isPrimary,
+    );
+
+    if (!validation.isValid) {
+      const error = new Error(validation.error || "Invalid photo") as AppError;
+      error.statusCode = 400;
+      error.code = validation.code || "INVALID_PHOTO";
+      throw error;
+    }
+
+    return {
+      valid: true,
+      message: isPrimary
+        ? "Main profile photo matches your verified selfie!"
+        : "Photo verified successfully!",
+      metadata: validation.metadata,
+    };
   }
 
   async getKyc(userId: string): Promise<{ status: string } | null> {

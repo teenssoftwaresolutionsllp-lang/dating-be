@@ -32,7 +32,7 @@ export interface SupportedLanguage {
 export interface TokenPayload {
   id: string;
   phone?: string | null;
-  role: string;
+  role?: string;
   [key: string]: unknown;
 }
 

@@ -15,12 +15,15 @@ async function reset() {
     process.exit(1);
   }
 
-  console.log("⚠️ Resetting database (dropping public schema)...");
+  console.log("⚠️ Resetting database (dropping public + drizzle schemas)...");
   try {
     await db.execute(sql`DROP SCHEMA public CASCADE;`);
     await db.execute(sql`CREATE SCHEMA public;`);
     await db.execute(sql`GRANT ALL ON SCHEMA public TO public;`);
-    console.log("✅ Public schema reset successfully. Ready for fresh migrations.");
+    // Also drop the migration tracking schema, otherwise drizzle thinks
+    // migrations already ran and won't recreate the (now-dropped) tables.
+    await db.execute(sql`DROP SCHEMA IF EXISTS drizzle CASCADE;`);
+    console.log("✅ Schemas reset successfully. Ready for fresh migrations.");
   } catch (err) {
     console.error("❌ Reset failed:", err);
     process.exitCode = 1;

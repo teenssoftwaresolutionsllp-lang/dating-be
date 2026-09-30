@@ -132,11 +132,13 @@ class ProfileRepository {
           .from(profileLanguages)
           .where(eq(profileLanguages.profileId, profile.id));
         const [interestsResult] = await transaction
-          .select({ count: count() })
+          .select({
+            count: sql<number>`cardinality(${profileInterests.interestIds})`,
+          })
           .from(profileInterests)
           .where(eq(profileInterests.profileId, profile.id));
         languageCount = Number(languagesResult?.count ?? 0);
-        interestCount = Number(interestsResult.count);
+        interestCount = Number(interestsResult?.count ?? 0);
       }
 
       return {
@@ -189,15 +191,12 @@ class ProfileRepository {
       }
 
       await transaction
-        .delete(profileInterests)
-        .where(eq(profileInterests.profileId, profile.id));
-
-      await transaction.insert(profileInterests).values(
-        interestIds.map((interestId) => ({
-          profileId: profile.id,
-          interestId,
-        })),
-      );
+        .insert(profileInterests)
+        .values({ profileId: profile.id, interestIds })
+        .onConflictDoUpdate({
+          target: profileInterests.profileId,
+          set: { interestIds },
+        });
 
       await transaction
         .update(users)
@@ -437,7 +436,10 @@ class ProfileRepository {
           category: interests.category,
         })
         .from(profileInterests)
-        .innerJoin(interests, eq(profileInterests.interestId, interests.id))
+        .innerJoin(
+          interests,
+          sql`${interests.id} = ANY(${profileInterests.interestIds})`,
+        )
         .where(eq(profileInterests.profileId, profile.id)),
       this.findEducationByUserId(userId),
       db

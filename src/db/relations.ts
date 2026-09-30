@@ -95,7 +95,7 @@ export const profilesRelations = relations(profiles, ({ many, one }) => ({
     references: [users.id],
   }),
   languages: one(profileLanguages),
-  interests: many(profileInterests),
+  interests: one(profileInterests),
 }));
 
 export const profileLanguagesRelations = relations(
@@ -108,20 +108,12 @@ export const profileLanguagesRelations = relations(
   }),
 );
 
-export const interestsRelations = relations(interests, ({ many }) => ({
-  profiles: many(profileInterests),
-}));
-
 export const profileInterestsRelations = relations(
   profileInterests,
   ({ one }) => ({
     profile: one(profiles, {
       fields: [profileInterests.profileId],
       references: [profiles.id],
-    }),
-    interest: one(interests, {
-      fields: [profileInterests.interestId],
-      references: [interests.id],
     }),
   }),
 );

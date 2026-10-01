@@ -12,12 +12,22 @@ import {
   swipes,
   swipeEvents,
   matches,
+  locations,
   conversations,
   conversationMembers,
   blocks,
   reports,
 } from "../db/schema";
-import { eq, and, or, desc, notInArray, sql, inArray } from "drizzle-orm";
+import {
+  eq,
+  and,
+  or,
+  desc,
+  notInArray,
+  sql,
+  inArray,
+  getTableColumns,
+} from "drizzle-orm";
 import type { AppError, SwipeDirection } from "../types/index";
 import {
   calculateTrustScore,
@@ -111,7 +121,12 @@ export class MatchService {
     userId: string;
     page?: number;
     limit?: number;
-  }): Promise<{ items: DiscoveryCard[]; total: number; page: number; limit: number }> {
+  }): Promise<{
+    items: DiscoveryCard[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
     // 1. Get list of user IDs already swiped on by this user
     const userSwipes = await db
       .select({ targetUserId: swipes.targetUserId })
@@ -128,12 +143,12 @@ export class MatchService {
       .from(blocks)
       .where(or(eq(blocks.userId, userId), eq(blocks.blockedUserId, userId)));
     const blockedUserIds = userBlocks.map((b) =>
-      b.userId === userId ? b.blockedUserId : b.userId
+      b.userId === userId ? b.blockedUserId : b.userId,
     );
 
     // Excluded IDs = self + already swiped + blocked
     const excludedIds = Array.from(
-      new Set([userId, ...swipedUserIds, ...blockedUserIds])
+      new Set([userId, ...swipedUserIds, ...blockedUserIds]),
     );
 
     // 3. Query candidate active users
@@ -146,8 +161,10 @@ export class MatchService {
       .where(
         and(
           eq(users.status, "active"),
-          excludedIds.length > 0 ? notInArray(users.id, excludedIds) : undefined
-        )
+          excludedIds.length > 0
+            ? notInArray(users.id, excludedIds)
+            : undefined,
+        ),
       )
       .orderBy(desc(users.lastActiveAt))
       .limit(limit)
@@ -162,8 +179,9 @@ export class MatchService {
 
     // 4. Fetch Profiles
     const candidateProfiles = await db
-      .select()
+      .select({ ...getTableColumns(profiles), city: locations.city })
       .from(profiles)
+      .leftJoin(locations, eq(profiles.locationId, locations.id))
       .where(inArray(profiles.userId, candidateIds));
 
     // 5. Fetch Photos
@@ -196,31 +214,36 @@ export class MatchService {
 
     // 8. Fetch Spoken Languages
     const profileIds = candidateProfiles.map((p) => p.id);
-    const candidateLangs = profileIds.length > 0
-      ? await db
-          .select({
-            profileId: profileLanguages.profileId,
-            languageName: languages.name,
-          })
-          .from(profileLanguages)
-          .innerJoin(
-            languages,
-            sql`${languages.id} = ANY(${profileLanguages.languageIds})`
-          )
-          .where(inArray(profileLanguages.profileId, profileIds))
-      : [];
+    const candidateLangs =
+      profileIds.length > 0
+        ? await db
+            .select({
+              profileId: profileLanguages.profileId,
+              languageName: languages.name,
+            })
+            .from(profileLanguages)
+            .innerJoin(
+              languages,
+              sql`${languages.id} = ANY(${profileLanguages.languageIds})`,
+            )
+            .where(inArray(profileLanguages.profileId, profileIds))
+        : [];
 
     // 9. Fetch Profile Interests
-    const candidateInterests = profileIds.length > 0
-      ? await db
-          .select({
-            profileId: profileInterests.profileId,
-            interestName: interests.name,
-          })
-          .from(profileInterests)
-          .innerJoin(interests, eq(interests.id, profileInterests.interestId))
-          .where(inArray(profileInterests.profileId, profileIds))
-      : [];
+    const candidateInterests =
+      profileIds.length > 0
+        ? await db
+            .select({
+              profileId: profileInterests.profileId,
+              interestName: interests.name,
+            })
+            .from(profileInterests)
+            .innerJoin(
+              interests,
+              sql`${interests.id} = ANY(${profileInterests.interestIds})`,
+            )
+            .where(inArray(profileInterests.profileId, profileIds))
+        : [];
 
     // Map candidate cards
     const items: DiscoveryCard[] = candidateUsers.map((u) => {
@@ -244,13 +267,16 @@ export class MatchService {
         : false;
 
       const hasBasicInfo = Boolean(
-        prof?.name && prof?.dateOfBirth && prof?.gender && (prof?.bio || prof?.city)
+        prof?.name &&
+        prof?.dateOfBirth &&
+        prof?.gender &&
+        (prof?.bio || prof?.city),
       );
       const hasEducation = Boolean(
-        edu?.educationLevel || edu?.qualification || edu?.profession
+        edu?.educationLevel || edu?.qualification || edu?.profession,
       );
       const hasPhotosAndLanguages = Boolean(
-        userPhotos.length >= 1 || userLangs.length >= 1
+        userPhotos.length >= 1 || userLangs.length >= 1,
       );
       const isKycVerified = kyc?.status === "verified";
 
@@ -274,9 +300,19 @@ export class MatchService {
         foodPreference: prof?.foodPreference || "Foodie / Veg",
         drinking: prof?.drinking || "Socially",
         smoking: prof?.smoking || "No",
-        vibes: prof?.vibes && prof.vibes.length > 0 ? prof.vibes : ["Caring", "Fun & Funny", "Peaceful", "Deep Talks", "Positive"],
-        nature: prof?.vibes && prof.vibes.length > 0 ? prof.vibes : ["Caring", "Fun & Funny", "Peaceful", "Deep Talks", "Positive"],
-        lookingFor: [prof?.relationshipStatus ? `${prof.relationshipStatus}` : "Long-term relationship"],
+        vibes:
+          prof?.vibes && prof.vibes.length > 0
+            ? prof.vibes
+            : ["Caring", "Fun & Funny", "Peaceful", "Deep Talks", "Positive"],
+        nature:
+          prof?.vibes && prof.vibes.length > 0
+            ? prof.vibes
+            : ["Caring", "Fun & Funny", "Peaceful", "Deep Talks", "Positive"],
+        lookingFor: [
+          prof?.relationshipStatus
+            ? `${prof.relationshipStatus}`
+            : "Long-term relationship",
+        ],
         bio: prof?.bio || null,
         relationshipStatus: prof?.relationshipStatus || null,
         trustScore,
@@ -296,7 +332,10 @@ export class MatchService {
             }
           : null,
         languages: userLangs,
-        interests: userInterests.length > 0 ? userInterests : ["Music", "Movies", "Travel"],
+        interests:
+          userInterests.length > 0
+            ? userInterests
+            : ["Music", "Movies", "Travel"],
       };
     });
 
@@ -342,7 +381,7 @@ export class MatchService {
       .select()
       .from(swipes)
       .where(
-        and(eq(swipes.userId, userId), eq(swipes.targetUserId, targetUserId))
+        and(eq(swipes.userId, userId), eq(swipes.targetUserId, targetUserId)),
       );
 
     if (existingSwipe) {
@@ -380,8 +419,8 @@ export class MatchService {
           and(
             eq(swipes.userId, targetUserId),
             eq(swipes.targetUserId, userId),
-            or(eq(swipes.action, "like"), eq(swipes.action, "superlike"))
-          )
+            or(eq(swipes.action, "like"), eq(swipes.action, "superlike")),
+          ),
         );
 
       if (reverseSwipe) {
@@ -396,7 +435,7 @@ export class MatchService {
           .select()
           .from(matches)
           .where(
-            and(eq(matches.user1Id, user1Id), eq(matches.user2Id, user2Id))
+            and(eq(matches.user1Id, user1Id), eq(matches.user2Id, user2Id)),
           );
 
         if (existingMatch) {
@@ -431,8 +470,8 @@ export class MatchService {
           .where(
             and(
               eq(profilePhotos.userId, targetUserId),
-              eq(profilePhotos.isPrimary, true)
-            )
+              eq(profilePhotos.isPrimary, true),
+            ),
           )
           .limit(1);
 
@@ -442,7 +481,9 @@ export class MatchService {
           .where(eq(kycVerifications.userId, targetUserId));
 
         const targetTrustScore = calculateTrustScore({
-          hasBasicInfo: Boolean(targetProfile?.name && targetProfile?.dateOfBirth),
+          hasBasicInfo: Boolean(
+            targetProfile?.name && targetProfile?.dateOfBirth,
+          ),
           hasEducation: true,
           hasPhotosAndLanguages: Boolean(primaryPhoto?.url),
           isKycVerified: kyc?.status === "verified",
@@ -478,7 +519,12 @@ export class MatchService {
     userId: string;
     page?: number;
     limit?: number;
-  }): Promise<{ items: MatchListItem[]; total: number; page: number; limit: number }> {
+  }): Promise<{
+    items: MatchListItem[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
     // 1. Fetch active matches where current user is user1 or user2
     const activeMatches = await db
       .select()
@@ -486,8 +532,8 @@ export class MatchService {
       .where(
         and(
           or(eq(matches.user1Id, userId), eq(matches.user2Id, userId)),
-          eq(matches.status, "active")
-        )
+          eq(matches.status, "active"),
+        ),
       )
       .orderBy(desc(matches.matchedAt))
       .limit(limit)
@@ -499,13 +545,14 @@ export class MatchService {
 
     const matchIds = activeMatches.map((m) => m.id);
     const otherUserIds = activeMatches.map((m) =>
-      m.user1Id === userId ? m.user2Id : m.user1Id
+      m.user1Id === userId ? m.user2Id : m.user1Id,
     );
 
     // 2. Fetch other users' profile details
     const userProfiles = await db
-      .select()
+      .select({ ...getTableColumns(profiles), city: locations.city })
       .from(profiles)
+      .leftJoin(locations, eq(profiles.locationId, locations.id))
       .where(inArray(profiles.userId, otherUserIds));
 
     const photos = await db
@@ -550,7 +597,8 @@ export class MatchService {
     const items: MatchListItem[] = activeMatches.map((m) => {
       const otherId = m.user1Id === userId ? m.user2Id : m.user1Id;
       const prof = userProfiles.find((p) => p.userId === otherId);
-      const userPhoto = photos.find((p) => p.userId === otherId && p.isPrimary) ||
+      const userPhoto =
+        photos.find((p) => p.userId === otherId && p.isPrimary) ||
         photos.find((p) => p.userId === otherId);
       const edu = edus.find((e) => e.userId === otherId);
       const kyc = kycs.find((k) => k.userId === otherId);
@@ -615,8 +663,8 @@ export class MatchService {
         and(
           eq(matches.id, matchId),
           or(eq(matches.user1Id, userId), eq(matches.user2Id, userId)),
-          eq(matches.status, "active")
-        )
+          eq(matches.status, "active"),
+        ),
       );
 
     if (!match) {
@@ -672,8 +720,8 @@ export class MatchService {
       .where(
         and(
           eq(swipes.targetUserId, userId),
-          or(eq(swipes.action, "like"), eq(swipes.action, "superlike"))
-        )
+          or(eq(swipes.action, "like"), eq(swipes.action, "superlike")),
+        ),
       )
       .orderBy(desc(swipes.createdAt))
       .limit(limit)
@@ -686,8 +734,9 @@ export class MatchService {
     const swiperIds = receivedSwipes.map((s) => s.swiperId);
 
     const swiperProfiles = await db
-      .select()
+      .select({ ...getTableColumns(profiles), city: locations.city })
       .from(profiles)
+      .leftJoin(locations, eq(profiles.locationId, locations.id))
       .where(inArray(profiles.userId, swiperIds));
 
     const photos = await db
@@ -699,8 +748,8 @@ export class MatchService {
       .where(
         and(
           inArray(profilePhotos.userId, swiperIds),
-          eq(profilePhotos.isPrimary, true)
-        )
+          eq(profilePhotos.isPrimary, true),
+        ),
       );
 
     const kycs = await db
@@ -748,8 +797,8 @@ export class MatchService {
       .where(
         and(
           eq(matches.id, matchId),
-          or(eq(matches.user1Id, userId), eq(matches.user2Id, userId))
-        )
+          or(eq(matches.user1Id, userId), eq(matches.user2Id, userId)),
+        ),
       );
 
     if (!match) {
@@ -784,7 +833,7 @@ export class MatchService {
       .select()
       .from(blocks)
       .where(
-        and(eq(blocks.userId, userId), eq(blocks.blockedUserId, targetUserId))
+        and(eq(blocks.userId, userId), eq(blocks.blockedUserId, targetUserId)),
       );
 
     if (!existingBlock) {
@@ -830,8 +879,8 @@ export class MatchService {
       .where(
         and(
           eq(swipes.userId, userId),
-          or(eq(swipes.action, "like"), eq(swipes.action, "superlike"))
-        )
+          or(eq(swipes.action, "like"), eq(swipes.action, "superlike")),
+        ),
       )
       .orderBy(desc(swipes.createdAt))
       .limit(limit)
@@ -844,8 +893,9 @@ export class MatchService {
     const targetIds = sentSwipes.map((s) => s.targetUserId);
 
     const targetProfiles = await db
-      .select()
+      .select({ ...getTableColumns(profiles), city: locations.city })
       .from(profiles)
+      .leftJoin(locations, eq(profiles.locationId, locations.id))
       .where(inArray(profiles.userId, targetIds));
 
     const photos = await db
@@ -857,8 +907,8 @@ export class MatchService {
       .where(
         and(
           inArray(profilePhotos.userId, targetIds),
-          eq(profilePhotos.isPrimary, true)
-        )
+          eq(profilePhotos.isPrimary, true),
+        ),
       );
 
     const edus = await db
@@ -917,7 +967,7 @@ export class MatchService {
       .from(blocks)
       .where(or(eq(blocks.userId, userId), eq(blocks.blockedUserId, userId)));
     const blockedUserIds = userBlocks.map((b) =>
-      b.userId === userId ? b.blockedUserId : b.userId
+      b.userId === userId ? b.blockedUserId : b.userId,
     );
     const excludedIds = Array.from(new Set([userId, ...blockedUserIds]));
 
@@ -930,8 +980,10 @@ export class MatchService {
       .where(
         and(
           eq(users.status, "active"),
-          excludedIds.length > 0 ? notInArray(users.id, excludedIds) : undefined
-        )
+          excludedIds.length > 0
+            ? notInArray(users.id, excludedIds)
+            : undefined,
+        ),
       )
       .orderBy(desc(users.lastActiveAt))
       .limit(30);
@@ -949,8 +1001,9 @@ export class MatchService {
     }
 
     const candidateProfiles = await db
-      .select()
+      .select({ ...getTableColumns(profiles), city: locations.city })
       .from(profiles)
+      .leftJoin(locations, eq(profiles.locationId, locations.id))
       .where(inArray(profiles.userId, candidateIds));
 
     const candidatePhotos = await db
@@ -969,18 +1022,25 @@ export class MatchService {
       .where(inArray(education.userId, candidateIds));
 
     const profileIds = candidateProfiles.map((p) => p.id);
-    const candidateInterests = profileIds.length > 0
-      ? await db
-          .select({
-            profileId: profileInterests.profileId,
-            interestName: interests.name,
-          })
-          .from(profileInterests)
-          .innerJoin(interests, eq(interests.id, profileInterests.interestId))
-          .where(inArray(profileInterests.profileId, profileIds))
-      : [];
+    const candidateInterests =
+      profileIds.length > 0
+        ? await db
+            .select({
+              profileId: profileInterests.profileId,
+              interestName: interests.name,
+            })
+            .from(profileInterests)
+            .innerJoin(
+              interests,
+              sql`${interests.id} = ANY(${profileInterests.interestIds})`,
+            )
+            .where(inArray(profileInterests.profileId, profileIds))
+        : [];
 
-    const formatTimeAgo = (date: Date | null | undefined, idx: number): string => {
+    const formatTimeAgo = (
+      date: Date | null | undefined,
+      idx: number,
+    ): string => {
       if (!date) return `${10 + (idx % 20)} min ago`;
       const diffMs = Date.now() - new Date(date).getTime();
       const diffMins = Math.floor(diffMs / 60000);
@@ -994,7 +1054,8 @@ export class MatchService {
     const formattedCandidates = candidateUsers.map((u, index) => {
       const prof = candidateProfiles.find((p) => p.userId === u.id);
       const edu = candidateEdu.find((e) => e.userId === u.id);
-      const userPhoto = candidatePhotos.find((p) => p.userId === u.id && p.isPrimary) ||
+      const userPhoto =
+        candidatePhotos.find((p) => p.userId === u.id && p.isPrimary) ||
         candidatePhotos.find((p) => p.userId === u.id);
       const userInterests = prof
         ? candidateInterests
@@ -1017,7 +1078,9 @@ export class MatchService {
         profession: edu?.profession || "Designer",
         distance: `${(2.0 + (index % 6) * 0.7).toFixed(1)} Km`,
         matchPercentage: Math.max(75, 95 - (index % 5) * 5),
-        interest: userInterests[0] || (index % 3 === 0 ? "Music" : index % 3 === 1 ? "Movie" : "Travel"),
+        interest:
+          userInterests[0] ||
+          (index % 3 === 0 ? "Music" : index % 3 === 1 ? "Movie" : "Travel"),
         timeAgo: formatTimeAgo(u.lastActiveAt, index),
         isOnline,
         image: userPhoto?.url || null,

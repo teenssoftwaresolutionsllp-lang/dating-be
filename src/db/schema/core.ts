@@ -38,7 +38,11 @@ export const users = pgTable(
       .default("email")
       .notNull(),
     role: varchar("role", { length: 20 }).default("user").notNull(), // user, moderator, admin
-    status: varchar("status", { length: 20 }).default("active").notNull(), // active, suspended, banned, deleted
+    status: varchar("status", { length: 20 }).default("active").notNull(), // active, deactivated, suspended, banned, deleted
+    deactivatedAt: timestamp("deactivated_at", { withTimezone: true }),
+    deletionScheduledAt: timestamp("deletion_scheduled_at", {
+      withTimezone: true,
+    }),
     emailVerified: boolean("email_verified").default(false).notNull(),
     phoneVerified: boolean("phone_verified").default(false).notNull(),
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
@@ -62,6 +66,10 @@ export const users = pgTable(
     index("users_role_idx").on(table.role),
     index("users_created_at_idx").on(table.createdAt),
     index("users_last_active_at_idx").on(table.lastActiveAt),
+    index("users_deletion_scheduled_at_idx").on(
+      table.status,
+      table.deletionScheduledAt,
+    ),
     check(
       "users_failed_attempts_non_negative_check",
       sql`${table.failedLoginAttempts} >= 0`,
@@ -73,9 +81,48 @@ export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 
 /**
+ * locations
+ * Canonical geographic records used by onboarding and matching. A Google place
+ * search result resolves to a single location row, and each profile points to that
+ * location via a foreign key.
+ */
+export const locations = pgTable(
+  "locations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    googlePlaceId: varchar("google_place_id", { length: 255 })
+      .notNull()
+      .unique(),
+    isSeeded: boolean("is_seeded").default(false).notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
+    city: varchar("city", { length: 120 }),
+    state: varchar("state", { length: 120 }),
+    country: varchar("country", { length: 120 }),
+    latitude: doublePrecision("latitude"),
+    longitude: doublePrecision("longitude"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("locations_google_place_id_unique_idx").on(table.googlePlaceId),
+    index("locations_city_idx").on(table.city),
+    index("locations_state_idx").on(table.state),
+    index("locations_country_idx").on(table.country),
+    index("locations_lat_long_idx").on(table.latitude, table.longitude),
+  ],
+);
+
+export type Location = typeof locations.$inferSelect;
+export type NewLocation = typeof locations.$inferInsert;
+
+/**
  * profiles
- * Candidate-facing profile information shown to other users, including structured
- * location coordinates for geographic matching algorithms.
+ * Candidate-facing profile information shown to other users, with a reference to
+ * the canonical location record.
  */
 export const profiles = pgTable(
   "profiles",
@@ -96,11 +143,9 @@ export const profiles = pgTable(
     drinking: varchar("drinking", { length: 50 }),
     smoking: varchar("smoking", { length: 50 }),
     vibes: jsonb("vibes").$type<string[]>(),
-    city: varchar("city", { length: 100 }),
-    state: varchar("state", { length: 100 }),
-    country: varchar("country", { length: 100 }),
-    latitude: doublePrecision("latitude"),
-    longitude: doublePrecision("longitude"),
+    locationId: uuid("location_id").references(() => locations.id, {
+      onDelete: "set null",
+    }),
     locationUpdatedAt: timestamp("location_updated_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -113,8 +158,7 @@ export const profiles = pgTable(
     uniqueIndex("profiles_user_id_unique_idx").on(table.userId),
     index("profiles_gender_idx").on(table.gender),
     index("profiles_dob_idx").on(table.dateOfBirth),
-    index("profiles_city_idx").on(table.city),
-    index("profiles_lat_long_idx").on(table.latitude, table.longitude),
+    index("profiles_location_id_idx").on(table.locationId),
     check(
       "profiles_height_positive_check",
       sql`${table.heightCm} IS NULL OR ${table.heightCm} > 0`,

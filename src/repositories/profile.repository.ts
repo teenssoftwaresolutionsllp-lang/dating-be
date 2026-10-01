@@ -31,11 +31,6 @@ export type ProfileUpdate = Partial<
     | "gender"
     | "religion"
     | "heightCm"
-    | "city"
-    | "state"
-    | "country"
-    | "latitude"
-    | "longitude"
     | "locationUpdatedAt"
     | "relationshipStatus"
     | "foodPreference"
@@ -132,11 +127,13 @@ class ProfileRepository {
           .from(profileLanguages)
           .where(eq(profileLanguages.profileId, profile.id));
         const [interestsResult] = await transaction
-          .select({ count: count() })
+          .select({
+            count: sql<number>`cardinality(${profileInterests.interestIds})`,
+          })
           .from(profileInterests)
           .where(eq(profileInterests.profileId, profile.id));
         languageCount = Number(languagesResult?.count ?? 0);
-        interestCount = Number(interestsResult.count);
+        interestCount = Number(interestsResult?.count ?? 0);
       }
 
       return {
@@ -189,15 +186,12 @@ class ProfileRepository {
       }
 
       await transaction
-        .delete(profileInterests)
-        .where(eq(profileInterests.profileId, profile.id));
-
-      await transaction.insert(profileInterests).values(
-        interestIds.map((interestId) => ({
-          profileId: profile.id,
-          interestId,
-        })),
-      );
+        .insert(profileInterests)
+        .values({ profileId: profile.id, interestIds })
+        .onConflictDoUpdate({
+          target: profileInterests.profileId,
+          set: { interestIds },
+        });
 
       await transaction
         .update(users)
@@ -249,6 +243,7 @@ class ProfileRepository {
       url: string;
     },
     selfieUrl?: string,
+    selfieStorageKey?: string,
   ): Promise<KycVerification> {
     return db.transaction(async (transaction) => {
       const now = new Date();
@@ -260,6 +255,7 @@ class ProfileRepository {
           documentNumberHash,
           documentImageStorageKey: documentImage?.storageKey,
           documentImageUrl: documentImage?.url,
+          selfieStorageKey,
           providerReference: selfieUrl,
           status: "verified",
           verifiedAt: now,
@@ -277,6 +273,7 @@ class ProfileRepository {
                 }
               : {}),
             ...(selfieUrl ? { providerReference: selfieUrl } : {}),
+            ...(selfieStorageKey ? { selfieStorageKey } : {}),
             status: "verified",
             verifiedAt: now,
             rejectionReason: null,
@@ -437,7 +434,10 @@ class ProfileRepository {
           category: interests.category,
         })
         .from(profileInterests)
-        .innerJoin(interests, eq(profileInterests.interestId, interests.id))
+        .innerJoin(
+          interests,
+          sql`${interests.id} = ANY(${profileInterests.interestIds})`,
+        )
         .where(eq(profileInterests.profileId, profile.id)),
       this.findEducationByUserId(userId),
       db
@@ -521,12 +521,7 @@ class ProfileRepository {
       onboardingStep = "BIRTHDAY";
     } else if (!data.profile.heightCm) {
       onboardingStep = "LOCATION";
-    } else if (
-      !data.profile.city &&
-      !data.profile.state &&
-      !data.profile.country &&
-      (data.profile.latitude === null || data.profile.longitude === null)
-    ) {
+    } else if (!data.profile.locationId) {
       onboardingStep = "LOCATION";
     } else if (!data.profile.relationshipStatus) {
       onboardingStep = "RELATIONSHIP";

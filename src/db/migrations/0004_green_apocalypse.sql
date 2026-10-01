@@ -1,0 +1,1 @@
+CREATE INDEX "users_deletion_scheduled_at_idx" ON "users" USING btree ("status","deletion_scheduled_at");

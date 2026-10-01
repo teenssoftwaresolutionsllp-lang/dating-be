@@ -8,6 +8,62 @@
       "when": 1790050078348,
       "tag": "0000_round_valkyrie",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790742368550,
+      "tag": "0001_flowery_deathstrike",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790745716144,
+      "tag": "0002_smart_archangel",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790767515463,
+      "tag": "0003_careless_vector",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790768057507,
+      "tag": "0004_green_apocalypse",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790768887522,
+      "tag": "0005_sudden_black_widow",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790783499967,
+      "tag": "0006_damp_randall_flagg",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790785094317,
+      "tag": "0007_lowly_fabian_cortez",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790845381439,
+      "tag": "0008_lucky_sway",
+      "breakpoints": true
     }
   ]
 }

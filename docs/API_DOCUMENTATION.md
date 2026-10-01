@@ -30,6 +30,7 @@ The API currently supports:
 - single or multiple profile-photo uploads
 - dating preferences
 - onboarding completion validation
+- account deactivation, OTP-confirmed deletion, and expiry cleanup
 
 The following features are not mounted as API routes yet:
 
@@ -102,6 +103,14 @@ CLOUDINARY_API_SECRET=your_api_secret
 
 Replace the placeholder values with real Cloudinary credentials before testing uploads. Never expose `CLOUDINARY_API_SECRET` to the frontend or commit it to source control.
 
+For Google autocomplete and location resolution, configure the backend-only Maps API key:
+
+```env
+GOOGLE_MAPS_API_KEY=your_google_maps_api_key
+```
+
+This key is required for `/api/v1/locations/autocomplete` and `/api/v1/users/me/location`.
+
 ## 4. Common Headers
 
 For JSON requests, use:
@@ -158,7 +167,73 @@ Common status codes:
 | 429    | OTP resend cooldown is active            |
 | 500    | Unexpected server error                  |
 
-## 6. Recommended Postman Test Order
+## 6. Location Selection Endpoints
+
+These routes are protected by the existing JWT middleware and are mounted under `/api/v1`.
+
+### 6.1 Get popular city locations
+
+```http
+GET {{baseUrl}}/api/v1/locations/popular
+Authorization: Bearer {{accessToken}}
+```
+
+Returns the seeded Indian metro locations that can be selected during onboarding.
+
+### 6.2 Get autocomplete suggestions
+
+```http
+POST {{baseUrl}}/api/v1/locations/autocomplete
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "input": "delhi",
+  "sessionToken": "optional-client-session-token"
+}
+```
+
+Returns a deduplicated list of Google Places suggestions merged with the seeded popular cities.
+
+### 6.3 Save a popular location
+
+```http
+POST {{baseUrl}}/api/v1/users/me/location/selection
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "locationId": "<location_uuid>"
+}
+```
+
+Stores the selected canonical location against the authenticated profile.
+
+### 6.4 Save a Google-based location
+
+```http
+POST {{baseUrl}}/api/v1/users/me/location
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "placeId": "ChIJ1234567890",
+  "sessionToken": "optional-client-session-token"
+}
+```
+
+Normalizes a Google place result into the project’s canonical location record and stores it on the profile.
+
+### 6.5 Get the current selected location
+
+```http
+GET {{baseUrl}}/api/v1/users/me/location
+Authorization: Bearer {{accessToken}}
+```
+
+Returns the authenticated user’s saved location, or a `404` error if no location has been chosen yet.
+
+## 7. Recommended Postman Test Order
 
 Use this order to test the complete currently implemented flow:
 
@@ -180,6 +255,8 @@ Use this order to test the complete currently implemented flow:
 16. Save dating preferences
 17. Try onboarding completion
 18. Test logout or logout-all
+19. Test account deactivation and reactivation using a separate test phone
+20. Test OTP-confirmed permanent deletion last; it removes the test account
 
 The completion request will report `PHOTOS` as missing until at least one profile photo is uploaded to Cloudinary. KYC is temporarily marked
 `verified` after a successful document-photo upload.
@@ -1361,7 +1438,142 @@ This endpoint reports `PHOTOS` as missing until at least one profile photo is up
 KYC must have status `verified`; the current upload flow sets this immediately
 after a successful document-photo upload.
 
-## 10. Postman Environment Setup
+## 10. Account Lifecycle Routes
+
+Account lifecycle routes are mounted under `/api/v1/account`. Every route
+requires `Authorization: Bearer {{accessToken}}`. The authenticated user ID is
+taken from the token; deletion OTP requests accept no phone number or user ID.
+
+Apply the included migration before testing these routes:
+
+```bash
+npm run db:migrate
+```
+
+### 10.1 Deactivate account
+
+```http
+POST {{baseUrl}}/api/v1/account/deactivate
+Authorization: Bearer {{accessToken}}
+```
+
+No request body is required. The account becomes `deactivated`, all active
+refresh-token sessions are revoked, and profile data remains in the database.
+The returned deadline is exactly 30 UTC calendar days after deactivation.
+
+```json
+{
+  "success": true,
+  "statusCode": 200,
+  "message": "Account deactivated. It is scheduled for permanent deletion in 30 days.",
+  "data": {
+    "deactivatedAt": "2026-09-30T10:00:00.000Z",
+    "deletionScheduledAt": "2026-10-30T10:00:00.000Z"
+  }
+}
+```
+
+Errors include `401 UNAUTHORIZED`, `404 ACCOUNT_NOT_FOUND`, and
+`409 ACCOUNT_NOT_ACTIVE`.
+
+There is no reactivation endpoint. The existing phone OTP login flow reactivates
+the same account only before `deletionScheduledAt`. At or after the deadline,
+the old account is permanently deleted and login creates a new user ID with no
+old profile data. Suspended and banned accounts are never reactivated.
+
+### 10.2 Request account deletion OTP
+
+```http
+POST {{baseUrl}}/api/v1/account/deletion-otp
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+```
+
+Send an empty JSON object or no body. The server reads the phone number from the
+authenticated user's database record, uses the dedicated `DELETE_ACCOUNT` OTP
+purpose, stores only the SHA-256 OTP hash, and applies the configured OTP expiry,
+resend cooldown, and three-attempt limit. This request does not delete data.
+
+```json
+{
+  "success": true,
+  "statusCode": 200,
+  "message": "Account deletion code sent to the phone number on your account",
+  "data": {
+    "purpose": "DELETE_ACCOUNT",
+    "expiresIn": 600,
+    "resendCooldown": 30
+  }
+}
+```
+
+`devOtp` is included only outside production, following the existing login OTP
+development convention. Errors include `401 UNAUTHORIZED`, `404
+ACCOUNT_NOT_FOUND`, and `429 OTP_COOLDOWN_ACTIVE`.
+
+### 10.3 Confirm permanent account deletion
+
+```http
+POST {{baseUrl}}/api/v1/account/delete
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+```
+
+Request body:
+
+```json
+{ "otp": "1234" }
+```
+
+The code is checked against the authenticated account's unexpired, unused
+`DELETE_ACCOUNT` OTP. On success the code is marked used, sessions are revoked,
+and deleting the user row removes related database data through the verified
+foreign-key cascades. External media keys are durably queued for cleanup in the
+same database transaction.
+
+When no external assets remain to clean, the API returns `200`. If storage
+cleanup is pending, it returns `202` and does not claim the media deletion is
+complete:
+
+```json
+{
+  "success": true,
+  "statusCode": 202,
+  "message": "Account data was deleted. External media cleanup is pending and will be retried.",
+  "data": {
+    "deleted": true,
+    "mediaCleanupPending": true,
+    "pendingMediaCount": 2
+  }
+}
+```
+
+Errors include `400 OTP_NOT_FOUND`, `400 OTP_EXPIRED`, `400 INVALID_OTP`,
+`429 OTP_MAX_ATTEMPTS_EXCEEDED`, `401 UNAUTHORIZED`, and `403 ACCOUNT_INACTIVE`.
+The phone number is released when the database transaction commits, so a later
+OTP login creates a new account ID.
+
+### 10.4 Frontend sequence and cleanup operations
+
+1. Keep the access token until the endpoint responds.
+2. To deactivate: call `POST /account/deactivate`, show `deletionScheduledAt`,
+   then clear both access and refresh tokens from local storage/secure storage.
+3. To delete: call `POST /account/deletion-otp`, collect the code, then call
+   `POST /account/delete` with only `{ "otp": "..." }`.
+4. After either a `200` or `202` deletion response, clear both tokens and return
+   to login. A `202` means database deletion succeeded but external media
+   cleanup remains pending.
+
+The server starts the expiration and media-cleanup worker once at startup. It
+runs immediately and once per minute. All application instances must use the
+same PostgreSQL primary: a PostgreSQL session advisory lock serializes expiration
+and cleanup passes. Storage failures are recorded in `account_deletion_media`
+and retried; inspect `attempts` and `last_error` when diagnosing persistent
+Cloudinary or local-filesystem failures. The outbox preserves Cloudinary
+resource types (`image` or `video`, including audio uploaded as video) for
+profile photos, KYC media, message attachments, and user media assets.
+
+## 11. Postman Environment Setup
 
 Create a Postman environment with:
 
@@ -1390,7 +1602,7 @@ Recommended Postman request order:
 15. `PATCH {{baseUrl}}/api/v1/profile/dating-preferences`
 16. `POST {{baseUrl}}/api/v1/profile/onboarding/complete`
 
-## 11. Error Testing in Postman
+## 12. Error Testing in Postman
 
 ### Missing access token
 
@@ -1470,7 +1682,7 @@ Expected code:
 ONBOARDING_INCOMPLETE
 ```
 
-## 12. Data Ownership and Security
+## 13. Data Ownership and Security
 
 The backend does not accept user ownership from the request body for profile-related operations.
 
@@ -1496,32 +1708,38 @@ The `users.status` field represents account status only:
 
 ```text
 active
+deactivated
 suspended
-blocked
+banned
 deleted
 ```
+
+Deactivated accounts retain profile data until the 30-day deadline. The OTP
+login flow reactivates only before that deadline; expired accounts are deleted
+and replaced by a new user ID.
 
 Onboarding progress is derived from the saved profile, languages, education,
 KYC, photos, interests, and dating-preferences records. It is not stored in
 removed `users.onboarding_step` or `users.onboarding_completed_at` columns.
 
-## 13. Current Database Tables Used by Onboarding
+## 14. Current Database Tables Used by Onboarding
 
-| Table                | Purpose                                                                    |
-| -------------------- | -------------------------------------------------------------------------- |
-| `users`              | Account, authentication, and status data                                   |
-| `user_sessions`      | Authenticated sessions                                                     |
-| `profiles`           | Core profile details, religion, and structured location                    |
-| `languages`          | Predefined language master data                                            |
-| `profile_languages`  | User-language relationships                                                |
-| `education`          | Education level and qualification                                          |
-| `kyc_verifications`  | Hashed KYC data, document image metadata, and status                       |
-| `profile_photos`     | Cloudinary profile photo metadata                                          |
-| `interests`          | Predefined interest master data                                            |
-| `profile_interests`  | User-interest relationships                                                |
-| `dating_preferences` | Age, distance, gender, religion, intention, and preferred-interest filters |
+| Table                    | Purpose                                                                    |
+| ------------------------ | -------------------------------------------------------------------------- |
+| `users`                  | Account, authentication, and status data                                   |
+| `user_sessions`          | Authenticated sessions                                                     |
+| `profiles`               | Core profile details, religion, and structured location                    |
+| `languages`              | Predefined language master data                                            |
+| `profile_languages`      | User-language relationships                                                |
+| `education`              | Education level and qualification                                          |
+| `kyc_verifications`      | Hashed KYC data, document image metadata, and status                       |
+| `profile_photos`         | Cloudinary profile photo metadata                                          |
+| `interests`              | Predefined interest master data                                            |
+| `profile_interests`      | User-interest relationships                                                |
+| `dating_preferences`     | Age, distance, gender, religion, intention, and preferred-interest filters |
+| `account_deletion_media` | Retryable external media cleanup jobs after permanent deletion             |
 
-## 14. Known Limitations
+## 15. Known Limitations
 
 1. React Native clients must securely store refresh tokens and send `X-Client-Platform: react-native` when using JSON refresh-token transport.
 2. Languages and interests require master data to be inserted before selection requests can succeed.
@@ -1530,7 +1748,7 @@ removed `users.onboarding_step` or `users.onboarding_completed_at` columns.
 5. Location search and predefined location IDs are intentionally deferred; onboarding stores structured location fields and optional coordinates.
 6. The current documentation reflects the implemented API and should be updated whenever a new route is added.
 
-## 15. Implementation Verification
+## 16. Implementation Verification
 
 The following commands are available for verification:
 

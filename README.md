@@ -5,6 +5,7 @@ A production-grade, highly scalable, and secure PostgreSQL database layer design
 ---
 
 ## 📑 Table of Contents
+
 1. [Database Overview](#1-database-overview)
 2. [Technology Stack](#2-technology-stack)
 3. [DB Folder Structure](#3-db-folder-structure)
@@ -39,7 +40,9 @@ A production-grade, highly scalable, and secure PostgreSQL database layer design
 ---
 
 ## 1. Database Overview
+
 This database architecture powers a dating application with:
+
 - **Authentication & Security**: Email, Phone OTP, Social OAuth, password reset, brute-force locking (`failed_login_attempts`, `locked_until`), session management with native PostgreSQL `INET` IP address tracking.
 - **Profiles & Discovery**: Structured geospatial coordinates (`latitude`, `longitude`, `city`, `state`, `country`), multi-select preference filters stored in performant `JSONB`, language & interest tag junctions.
 - **Matching & Swiping**: Canonical match pair constraints `CHECK (user1_id < user2_id)` preventing duplicate reciprocal matches, swipe decision uniqueness, and immutable `swipe_events` for ML recommendation training.
@@ -50,6 +53,7 @@ This database architecture powers a dating application with:
 ---
 
 ## 2. Technology Stack
+
 - **Database Engine**: PostgreSQL 15+ / 16+
 - **ORM / Query Builder**: Drizzle ORM (`v0.45.2+`)
 - **Migration Kit**: Drizzle Kit (`v0.31.10+`)
@@ -60,6 +64,7 @@ This database architecture powers a dating application with:
 ---
 
 ## 3. DB Folder Structure
+
 ```text
 src/db/
 ├── index.ts               # Database connection pool & Drizzle ORM client initialization
@@ -82,14 +87,14 @@ src/db/
 
 ## 4. Purpose of Every Schema File
 
-| File Path | Domain / Responsibility | Rationale & Ownership |
-| :--- | :--- | :--- |
-| `schema/independent.ts` | Master Lookups & Catalogs | Contains entities with **zero foreign key dependencies** (`languages`, `interests`, `subscription_plans`, `subscription_features`). Root of the dependency tree. |
-| `schema/core.ts` | Identity, Auth & Profile | Contains the primary account entity (`users`), candidate profile (`profiles`), active authentication tokens (`user_sessions`, `otp_verifications`, `password_reset_tokens`), push devices (`user_devices`), and 1:1 user preferences (`user_settings`, `notification_settings`). |
-| `schema/junction.ts` | Many-to-Many Associations | Houses associative join tables with **composite primary keys** (`profile_languages`, `profile_interests`, `conversation_members`, `message_reads`, `plan_features`). |
-| `schema/dependent.ts` | Domain Features & Safety | Contains entities dependent on users and profiles: discovery filters (`dating_preferences`), swipe state & event stream (`swipes`, `swipe_events`), matches (`matches`), chat threads (`conversations`, `messages`), trust & safety (`blocks`, `reports`, `report_actions`, `user_suspensions`, `admin_audit_logs`), and notifications (`notifications`, `push_notification_deliveries`). |
-| `schema/payments.ts` | Monetization & Webhooks | Encapsulates billing transactions (`payments`), active subscription lifecycles (`subscriptions`), webhook event deduplication (`subscription_events`), and daily quota consumption tracking (`feature_usage`). |
-| `schema/index.ts` | Barrel Export | Provides a single unified entrypoint exporting all tables, types (`$inferSelect`, `$inferInsert`), and constants. |
+| File Path               | Domain / Responsibility   | Rationale & Ownership                                                                                                                                                                                                                                                                                                                                                                     |
+| :---------------------- | :------------------------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `schema/independent.ts` | Master Lookups & Catalogs | Contains entities with **zero foreign key dependencies** (`languages`, `interests`, `subscription_plans`, `subscription_features`). Root of the dependency tree.                                                                                                                                                                                                                          |
+| `schema/core.ts`        | Identity, Auth & Profile  | Contains the primary account entity (`users`), candidate profile (`profiles`), active authentication tokens (`user_sessions`, `otp_verifications`, `password_reset_tokens`), push devices (`user_devices`), and 1:1 user preferences (`user_settings`, `notification_settings`).                                                                                                          |
+| `schema/junction.ts`    | Many-to-Many Associations | Houses associative join tables with **composite primary keys** (`profile_languages`, `profile_interests`, `conversation_members`, `message_reads`, `plan_features`).                                                                                                                                                                                                                      |
+| `schema/dependent.ts`   | Domain Features & Safety  | Contains entities dependent on users and profiles: discovery filters (`dating_preferences`), swipe state & event stream (`swipes`, `swipe_events`), matches (`matches`), chat threads (`conversations`, `messages`), trust & safety (`blocks`, `reports`, `report_actions`, `user_suspensions`, `admin_audit_logs`), and notifications (`notifications`, `push_notification_deliveries`). |
+| `schema/payments.ts`    | Monetization & Webhooks   | Encapsulates billing transactions (`payments`), active subscription lifecycles (`subscriptions`), webhook event deduplication (`subscription_events`), and daily quota consumption tracking (`feature_usage`).                                                                                                                                                                            |
+| `schema/index.ts`       | Barrel Export             | Provides a single unified entrypoint exporting all tables, types (`$inferSelect`, `$inferInsert`), and constants.                                                                                                                                                                                                                                                                         |
 
 ---
 
@@ -242,7 +247,7 @@ Database Architecture (35 Production Tables)
 
 - `users.locked_until`: Timestamp indicating when a brute-force locked account will be released.
 - `users.failed_login_attempts`: Consecutive failed logins counter.
-- `profiles.latitude` & `profiles.longitude`: Geo-coordinates for radial proximity calculations.
+- `profiles.location_id`: Reference to the canonical location record, including its geo-coordinates.
 - `matches.user1_id` & `matches.user2_id`: Strictly ordered UUIDs (`user1_id < user2_id`).
 - `messages.client_message_id`: Client-generated UUID ensuring network retry message deduplication.
 - `subscription_events.event_id`: Gateway webhook event ID ensuring webhook idempotency.
@@ -266,6 +271,7 @@ Database Architecture (35 Production Tables)
 ## 10. Foreign Keys
 
 All foreign keys use explicit referential actions:
+
 - **`ON DELETE CASCADE`**: Used when child data cannot exist without the parent (e.g. deleting a `users` record deletes `profiles`, `profile_photos`, `user_sessions`, `swipes`, `matches`, `notifications`).
 - **`ON DELETE SET NULL`**: Used for non-vital references (e.g. `kyc_verifications.reviewed_by`, `matches.unmatched_by`, `payments.subscription_id`, `user_sessions.device_id`).
 - **`ON DELETE RESTRICT`**: Used for financial records where deletion of referenced plans would break billing integrity (e.g. `subscriptions.plan_id` -> `subscription_plans.id`).
@@ -347,23 +353,23 @@ erDiagram
 
 ## 13. Enum & Status Fields
 
-| Entity | Field | Allowed Values | Default |
-| :--- | :--- | :--- | :--- |
-| `users` | `role` | `'user'`, `'moderator'`, `'admin'` | `'user'` |
-| `users` | `status` | `'active'`, `'suspended'`, `'banned'`, `'deleted'` | `'active'` |
-| `users` | `auth_provider` | `'email'`, `'google'`, `'apple'`, `'phone_otp'` | `'email'` |
-| `profiles` | `gender` | `'male'`, `'female'`, `'non_binary'`, `'other'` | *None* |
-| `user_devices` | `platform` | `'ios'`, `'android'`, `'web'` | *None* |
-| `kyc_verifications` | `status` | `'pending'`, `'verified'`, `'rejected'` | `'pending'` |
-| `profile_photos` | `moderation_status` | `'pending'`, `'approved'`, `'rejected'`, `'flagged'` | `'pending'` |
-| `swipes` | `action` | `'like'`, `'reject'`, `'super_like'` | *None* |
-| `matches` | `status` | `'active'`, `'unmatched'` | `'active'` |
-| `messages` | `message_type` | `'text'`, `'image'`, `'video'`, `'audio'`, `'system'` | `'text'` |
-| `reports` | `status` | `'pending'`, `'reviewed'`, `'actioned'`, `'dismissed'` | `'pending'` |
-| `user_suspensions` | `type` | `'temporary'`, `'permanent'` | *None* |
-| `subscriptions` | `status` | `'active'`, `'past_due'`, `'cancelled'`, `'expired'`, `'trialing'` | `'active'` |
-| `payments` | `status` | `'pending'`, `'success'`, `'failed'`, `'refunded'`, `'partially_refunded'` | `'pending'` |
-| `subscription_events`| `status` | `'received'`, `'processed'`, `'failed'`, `'ignored'` | `'received'` |
+| Entity                | Field               | Allowed Values                                                             | Default      |
+| :-------------------- | :------------------ | :------------------------------------------------------------------------- | :----------- |
+| `users`               | `role`              | `'user'`, `'moderator'`, `'admin'`                                         | `'user'`     |
+| `users`               | `status`            | `'active'`, `'suspended'`, `'banned'`, `'deleted'`                         | `'active'`   |
+| `users`               | `auth_provider`     | `'email'`, `'google'`, `'apple'`, `'phone_otp'`                            | `'email'`    |
+| `profiles`            | `gender`            | `'male'`, `'female'`, `'non_binary'`, `'other'`                            | _None_       |
+| `user_devices`        | `platform`          | `'ios'`, `'android'`, `'web'`                                              | _None_       |
+| `kyc_verifications`   | `status`            | `'pending'`, `'verified'`, `'rejected'`                                    | `'pending'`  |
+| `profile_photos`      | `moderation_status` | `'pending'`, `'approved'`, `'rejected'`, `'flagged'`                       | `'pending'`  |
+| `swipes`              | `action`            | `'like'`, `'reject'`, `'super_like'`                                       | _None_       |
+| `matches`             | `status`            | `'active'`, `'unmatched'`                                                  | `'active'`   |
+| `messages`            | `message_type`      | `'text'`, `'image'`, `'video'`, `'audio'`, `'system'`                      | `'text'`     |
+| `reports`             | `status`            | `'pending'`, `'reviewed'`, `'actioned'`, `'dismissed'`                     | `'pending'`  |
+| `user_suspensions`    | `type`              | `'temporary'`, `'permanent'`                                               | _None_       |
+| `subscriptions`       | `status`            | `'active'`, `'past_due'`, `'cancelled'`, `'expired'`, `'trialing'`         | `'active'`   |
+| `payments`            | `status`            | `'pending'`, `'success'`, `'failed'`, `'refunded'`, `'partially_refunded'` | `'pending'`  |
+| `subscription_events` | `status`            | `'received'`, `'processed'`, `'failed'`, `'ignored'`                       | `'received'` |
 
 ---
 
@@ -425,31 +431,31 @@ erDiagram
 
 ## 16. Indexes
 
-| Table | Index Name | Columns / Condition | Index Type |
-| :--- | :--- | :--- | :--- |
-| `users` | `users_phone_unique_idx` | `phone WHERE phone IS NOT NULL` | B-Tree (Unique Partial) |
-| `users` | `users_status_idx` | `status` | B-Tree |
-| `users` | `users_role_idx` | `role` | B-Tree |
-| `users` | `users_last_active_at_idx` | `last_active_at` | B-Tree |
-| `profiles` | `profiles_gender_idx` | `gender` | B-Tree |
-| `profiles` | `profiles_dob_idx` | `date_of_birth` | B-Tree |
-| `profiles` | `profiles_city_idx` | `city` | B-Tree |
-| `profiles` | `profiles_lat_long_idx` | `(latitude, longitude)` | B-Tree (Composite) |
-| `user_sessions` | `user_sessions_user_id_idx` | `user_id` | B-Tree |
-| `user_sessions` | `user_sessions_expires_at_idx`| `expires_at` | B-Tree |
-| `swipes` | `swipes_target_action_idx` | `(target_user_id, action)` | B-Tree (Composite) |
-| `swipes` | `swipes_created_at_idx` | `created_at` | B-Tree |
-| `matches` | `matches_user1_idx` | `user1_id` | B-Tree |
-| `matches` | `matches_user2_idx` | `user2_id` | B-Tree |
-| `matches` | `matches_last_activity_idx` | `last_activity_at` | B-Tree |
-| `messages` | `messages_conv_created_idx` | `(conversation_id, created_at)` | B-Tree (Composite) |
-| `messages` | `messages_sender_id_idx` | `sender_id` | B-Tree |
-| `blocks` | `blocks_user_id_idx` | `user_id` | B-Tree |
-| `blocks` | `blocks_blocked_user_id_idx`| `blocked_user_id` | B-Tree |
-| `notifications`| `notifications_user_created_idx`| `(user_id, created_at)` | B-Tree (Composite) |
-| `notifications`| `notifications_user_read_idx`| `(user_id, read_at)` | B-Tree (Composite) |
-| `subscription_events` | `sub_events_event_id_unique_idx` | `event_id` | B-Tree (Unique) |
-| `feature_usage` | `feature_usage_user_date_idx`| `(user_id, usage_date)` | B-Tree (Composite) |
+| Table                 | Index Name                       | Columns / Condition             | Index Type              |
+| :-------------------- | :------------------------------- | :------------------------------ | :---------------------- |
+| `users`               | `users_phone_unique_idx`         | `phone WHERE phone IS NOT NULL` | B-Tree (Unique Partial) |
+| `users`               | `users_status_idx`               | `status`                        | B-Tree                  |
+| `users`               | `users_role_idx`                 | `role`                          | B-Tree                  |
+| `users`               | `users_last_active_at_idx`       | `last_active_at`                | B-Tree                  |
+| `profiles`            | `profiles_gender_idx`            | `gender`                        | B-Tree                  |
+| `profiles`            | `profiles_dob_idx`               | `date_of_birth`                 | B-Tree                  |
+| `profiles`            | `profiles_city_idx`              | `city`                          | B-Tree                  |
+| `profiles`            | `profiles_lat_long_idx`          | `(latitude, longitude)`         | B-Tree (Composite)      |
+| `user_sessions`       | `user_sessions_user_id_idx`      | `user_id`                       | B-Tree                  |
+| `user_sessions`       | `user_sessions_expires_at_idx`   | `expires_at`                    | B-Tree                  |
+| `swipes`              | `swipes_target_action_idx`       | `(target_user_id, action)`      | B-Tree (Composite)      |
+| `swipes`              | `swipes_created_at_idx`          | `created_at`                    | B-Tree                  |
+| `matches`             | `matches_user1_idx`              | `user1_id`                      | B-Tree                  |
+| `matches`             | `matches_user2_idx`              | `user2_id`                      | B-Tree                  |
+| `matches`             | `matches_last_activity_idx`      | `last_activity_at`              | B-Tree                  |
+| `messages`            | `messages_conv_created_idx`      | `(conversation_id, created_at)` | B-Tree (Composite)      |
+| `messages`            | `messages_sender_id_idx`         | `sender_id`                     | B-Tree                  |
+| `blocks`              | `blocks_user_id_idx`             | `user_id`                       | B-Tree                  |
+| `blocks`              | `blocks_blocked_user_id_idx`     | `blocked_user_id`               | B-Tree                  |
+| `notifications`       | `notifications_user_created_idx` | `(user_id, created_at)`         | B-Tree (Composite)      |
+| `notifications`       | `notifications_user_read_idx`    | `(user_id, read_at)`            | B-Tree (Composite)      |
+| `subscription_events` | `sub_events_event_id_unique_idx` | `event_id`                      | B-Tree (Unique)         |
+| `feature_usage`       | `feature_usage_user_date_idx`    | `(user_id, usage_date)`         | B-Tree (Composite)      |
 
 ---
 
@@ -501,31 +507,41 @@ To respect referential integrity, seeding occurs in **strict topological order**
 Follow these step-by-step commands to generate, apply, seed, and inspect the database:
 
 ### Step 1: Generate SQL Migrations from Schema
+
 Compares the TypeScript schema in `src/db/schema/index.ts` against the latest snapshot in `src/db/migrations` and generates a clean SQL DDL file:
+
 ```powershell
 npm run db:generate
 ```
 
 ### Step 2: Apply Migrations to PostgreSQL
+
 Executes pending SQL migrations against your target PostgreSQL database via `src/db/migrate.ts`:
+
 ```powershell
 npm run db:migrate
 ```
 
 ### Step 3: Seed Database with Initial Data
+
 Executes `src/db/seed.ts` to populate languages, interests, subscription plans, features, test users, verified profiles, matches, and chat messages in topological order:
+
 ```powershell
 npm run db:seed
 ```
 
 ### Step 4: (Optional) Open Drizzle Studio Visual Dashboard
+
 Opens the local visual browser dashboard to inspect, query, and edit tables interactively:
+
 ```powershell
 npm run db:studio
 ```
 
 ### Step 5: (Development Only) Reset Database
+
 Drops the entire public schema and recreates it cleanly for a fresh start:
+
 ```powershell
 npm run db:reset
 ```
@@ -533,6 +549,7 @@ npm run db:reset
 ---
 
 ## 20. Security Considerations
+
 - **Password Protection**: Passwords are never stored in plain text; bcrypt / Argon2 hashes are stored in `users.password_hash`.
 - **Identity Hash Protection**: Sensitive KYC document numbers (Aadhaar, SSN, Passport) are stored as irreversible cryptographic hashes (`document_number_hash`).
 - **Session Protection**: Refresh tokens are stored strictly as SHA-256 hashes (`refresh_token_hash`).
@@ -542,7 +559,9 @@ npm run db:reset
 ---
 
 ## 21. Soft-Delete Strategy
+
 Soft delete is enabled for user-facing data to support restoration and compliance:
+
 - `users.deleted_at`: Marks deactivated accounts without breaking historical audit trails.
 - `profile_photos.deleted_at`: Preserves image records for safety dispute reviews before S3 object purge.
 - `media_assets.deleted_at`: Soft-deletes media files pending background garbage collection.
@@ -551,6 +570,7 @@ Soft delete is enabled for user-facing data to support restoration and complianc
 ---
 
 ## 22. Cascade-Delete Strategy
+
 - Deleting a `users` record cleanly cascades to `profiles`, `profile_photos`, `education`, `user_sessions`, `user_devices`, `swipes`, `matches`, `notifications`.
 - Deleting a `matches` record cascades to `conversations`, `conversation_members`, and `messages`.
 - Deleting a `subscription_plans` record is **RESTRICTED** (`ON DELETE RESTRICT`) to protect financial history.
@@ -558,6 +578,7 @@ Soft delete is enabled for user-facing data to support restoration and complianc
 ---
 
 ## 23. High-Volume Table Considerations
+
 - **`swipes` vs `swipe_events`**: `swipes` stores the current decision (1 row per pair with `UNIQUE(user_id, target_user_id)`). `swipe_events` is an append-only time-series stream. In production (>10M rows), `swipe_events` can be partitioned by month (`PARTITION BY RANGE (created_at)`).
 - **`messages`**: Partitioning by `created_at` or `conversation_id` hash can be introduced at scale.
 - **`user_login_events` & `admin_audit_logs`**: Append-only logs suitable for cold-storage archival or TimescaleDB / BigQuery data lake streaming.
@@ -565,6 +586,7 @@ Soft delete is enabled for user-facing data to support restoration and complianc
 ---
 
 ## 24. Location & PostGIS Strategy
+
 - Currently structured with high-precision `latitude` and `longitude` (`double precision`) with composite B-Tree indexing.
 - **PostGIS Upgrade Path**:
   ```sql
@@ -578,6 +600,7 @@ Soft delete is enabled for user-facing data to support restoration and complianc
 ---
 
 ## 25. Payment & Webhook Idempotency
+
 - `subscription_events` stores incoming webhook IDs (`event_id`) with a **`UNIQUE`** constraint.
 - When Stripe or Razorpay delivers a webhook:
   1. Insert into `subscription_events(provider, event_id, event_type, payload)` inside a transaction.
@@ -587,6 +610,7 @@ Soft delete is enabled for user-facing data to support restoration and complianc
 ---
 
 ## 26. Message Idempotency
+
 - When mobile clients lose network connectivity while sending a message, retries can duplicate messages.
 - The mobile app generates a UUID `client_message_id` for every message drafted.
 - The constraint `UNIQUE(sender_id, client_message_id)` in `messages` guarantees that retry submissions are acknowledged without creating duplicate chat bubbles.
@@ -594,6 +618,7 @@ Soft delete is enabled for user-facing data to support restoration and complianc
 ---
 
 ## 27. Pagination Recommendations
+
 - **Cursor-Based Pagination (Recommended for Feeds & Chat)**:
   Avoid `OFFSET / LIMIT` on large tables (`messages`, `notifications`, `swipe_events`). Use keyset pagination:
   ```sql
@@ -607,6 +632,7 @@ Soft delete is enabled for user-facing data to support restoration and complianc
 ---
 
 ## 28. Production Considerations
+
 1. **Connection Pooling**: Use PgBouncer in transaction mode in front of PostgreSQL.
 2. **Read Replicas**: Route feed discovery (`SELECT profiles WHERE ...`) to read replicas; route writes (`swipes`, `messages`) to the primary master.
 3. **Redis Caching Layer**: Cache user session validations and online status counters in Redis to minimize PostgreSQL read load.
@@ -614,35 +640,42 @@ Soft delete is enabled for user-facing data to support restoration and complianc
 ---
 
 ## 29. Optional / Future Tables
+
 - **`profile_verifications`**: Described in initial design notes as a potential unified table for phone, photo, and government ID verification. In this production architecture, verification is cleanly distributed between `kyc_verifications` (identity documents) and `profile_photos.verification_status` / `profile_photos.moderation_status`. A dedicated `profile_verifications` table can be introduced in future enterprise compliance expansions if multi-step biometric liveness verification is integrated.
 
 ---
 
 ## 30. Final Table Count
 
-| Category | File | Table Count |
-| :--- | :--- | :--- |
-| **Independent Lookups & Catalogs** | `src/db/schema/independent.ts` | 4 tables |
-| **Core Identity, Auth & Profile** | `src/db/schema/core.ts` | 9 tables |
-| **Junction Many-to-Many Associations** | `src/db/schema/junction.ts` | 5 tables |
-| **Dependent Features, Chat & Safety** | `src/db/schema/dependent.ts` | 17 tables |
-| **Payments & Monetization** | `src/db/schema/payments.ts` | 4 tables |
-| **Total Production Tables** | **All 5 Schema Files** | **35 Tables** |
-
-
-
+| Category                               | File                           | Table Count   |
+| :------------------------------------- | :----------------------------- | :------------ |
+| **Independent Lookups & Catalogs**     | `src/db/schema/independent.ts` | 4 tables      |
+| **Core Identity, Auth & Profile**      | `src/db/schema/core.ts`        | 9 tables      |
+| **Junction Many-to-Many Associations** | `src/db/schema/junction.ts`    | 5 tables      |
+| **Dependent Features, Chat & Safety**  | `src/db/schema/dependent.ts`   | 17 tables     |
+| **Payments & Monetization**            | `src/db/schema/payments.ts`    | 4 tables      |
+| **Total Production Tables**            | **All 5 Schema Files**         | **35 Tables** |
 
 # 1. Generate SQL migration files from your TypeScript schemas
+
 npm run db:generate
+
 # 2. Apply the generated migrations directly to your PostgreSQL database
+
 npm run db:migrate
+
 # 3. Seed initial master data (languages, interests, tiers, sample profiles, matches)
+
 npm run db:seed
+
 # 4. (Optional) Open the visual Drizzle Studio database browser
+
 npm run db:studio
+
 # 5. (Optional / Development only) Wipe and reset the database schema
+
 npm run db:reset
 
 ---
 
-*Generated for Dating Application Backend — Production Database Layer.*
+_Generated for Dating Application Backend — Production Database Layer._

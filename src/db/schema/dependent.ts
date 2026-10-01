@@ -75,6 +75,7 @@ export const kycVerifications = pgTable(
     documentNumberHash: text("document_number_hash").notNull(),
     documentImageStorageKey: text("document_image_storage_key"),
     documentImageUrl: text("document_image_url"),
+    selfieStorageKey: text("selfie_storage_key"),
     status: varchar("status", { length: 20 }).default("pending").notNull(), // pending, verified, rejected
     provider: varchar("provider", { length: 50 }),
     providerReference: text("provider_reference"),
@@ -184,6 +185,31 @@ export const mediaAssets = pgTable(
 
 export type MediaAsset = typeof mediaAssets.$inferSelect;
 export type NewMediaAsset = typeof mediaAssets.$inferInsert;
+
+export const accountDeletionMedia = pgTable(
+  "account_deletion_media",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    provider: varchar("provider", { length: 20 }).notNull(),
+    resourceType: varchar("resource_type", { length: 20 })
+      .default("image")
+      .notNull(),
+    storageKey: text("storage_key").notNull(),
+    storageUrl: text("storage_url"),
+    attempts: integer("attempts").default(0).notNull(),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [index("account_deletion_media_created_idx").on(table.createdAt)],
+);
+
+export type AccountDeletionMedia = typeof accountDeletionMedia.$inferSelect;
+export type NewAccountDeletionMedia = typeof accountDeletionMedia.$inferInsert;
 
 /**
  * dating_preferences

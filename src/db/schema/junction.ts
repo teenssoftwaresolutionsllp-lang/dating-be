@@ -48,21 +48,21 @@ export type NewProfileLanguage = typeof profileLanguages.$inferInsert;
 
 /**
  * profile_interests
- * Associative table linking candidate profiles to selected interest tags.
+ * Stores all selected interest IDs for a user in one row.
  */
 export const profileInterests = pgTable(
   "profile_interests",
   {
     profileId: uuid("profile_id")
-      .notNull()
+      .primaryKey()
       .references(() => profiles.id, { onDelete: "cascade" }),
-    interestId: integer("interest_id")
-      .notNull()
-      .references(() => interests.id, { onDelete: "cascade" }),
+    interestIds: integer("interest_ids").array().notNull(),
   },
   (table) => [
-    primaryKey({ columns: [table.profileId, table.interestId] }),
-    index("profile_interests_interest_id_idx").on(table.interestId),
+    index("profile_interests_interest_ids_gin_idx").using(
+      "gin",
+      table.interestIds,
+    ),
   ],
 );
 

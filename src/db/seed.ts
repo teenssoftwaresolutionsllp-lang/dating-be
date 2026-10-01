@@ -1,6 +1,6 @@
 import "dotenv/config";
 import bcrypt from "bcryptjs";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db, pool } from "./index";
 import {
   languages,
@@ -17,6 +17,7 @@ import {
   userLoginEvents,
   userSettings,
   notificationSettings,
+  locations,
   profileLanguages,
   profileInterests,
   education,
@@ -56,6 +57,131 @@ import {
  * 5. Monetization (subscriptions, payments, webhook events, feature usage quotas)
  */
 
+const POPULAR_LOCATIONS = [
+  {
+    googlePlaceId: "ChIJQ-BO1oT9cTcR1s0QmLQUaD0",
+    name: "Ahmedabad",
+    city: "Ahmedabad",
+    state: "Gujarat",
+    country: "India",
+    latitude: 23.0225,
+    longitude: 72.5714,
+  },
+  {
+    googlePlaceId: "ChIJ7YqPDxB4bDkR0TpnLwR-IwU",
+    name: "Pune",
+    city: "Pune",
+    state: "Maharashtra",
+    country: "India",
+    latitude: 18.5204,
+    longitude: 73.8567,
+  },
+  {
+    googlePlaceId: "ChIJU4xAjbJfcTcR4WNoB6bPzvY",
+    name: "Surat",
+    city: "Surat",
+    state: "Gujarat",
+    country: "India",
+    latitude: 21.1702,
+    longitude: 72.8311,
+  },
+  {
+    googlePlaceId: "ChIJdZp5AD2qDzkR3mGQhY0yWJ0",
+    name: "Jaipur",
+    city: "Jaipur",
+    state: "Rajasthan",
+    country: "India",
+    latitude: 26.9124,
+    longitude: 75.7873,
+  },
+  {
+    googlePlaceId: "ChIJL_P_CXMEDTkRw0ZdG-0x7QY",
+    name: "Delhi",
+    city: "Delhi",
+    state: "National Capital Territory of Delhi",
+    country: "India",
+    latitude: 28.6139,
+    longitude: 77.209,
+  },
+  {
+    googlePlaceId: "ChIJwe1EZjDG5zsRaYxkjY_tpF0",
+    name: "Mumbai",
+    city: "Mumbai",
+    state: "Maharashtra",
+    country: "India",
+    latitude: 19.076,
+    longitude: 72.8777,
+  },
+  {
+    googlePlaceId: "ChIJN0-lvLhL4TkR0mRf0HCaJhw",
+    name: "Kolkata",
+    city: "Kolkata",
+    state: "West Bengal",
+    country: "India",
+    latitude: 22.5726,
+    longitude: 88.3639,
+  },
+  {
+    googlePlaceId: "ChIJbU7iVw9M5zsRbgxQhA4b5I8",
+    name: "Bengaluru",
+    city: "Bengaluru",
+    state: "Karnataka",
+    country: "India",
+    latitude: 12.9716,
+    longitude: 77.5946,
+  },
+  {
+    googlePlaceId: "ChIJYTN9T_7LrjsRM9i4Ae2gja0",
+    name: "Chennai",
+    city: "Chennai",
+    state: "Tamil Nadu",
+    country: "India",
+    latitude: 13.0827,
+    longitude: 80.2707,
+  },
+  {
+    googlePlaceId: "ChIJx8d9yJ6qCzoRdnmuN6G3m5Y",
+    name: "Hyderabad",
+    city: "Hyderabad",
+    state: "Telangana",
+    country: "India",
+    latitude: 17.385,
+    longitude: 78.4867,
+  },
+] as const;
+
+async function seedLocations() {
+  await db
+    .insert(locations)
+    .values(
+      POPULAR_LOCATIONS.map((location) => ({
+        googlePlaceId: location.googlePlaceId,
+        isSeeded: true,
+        name: location.name,
+        city: location.city,
+        state: location.state,
+        country: location.country,
+        latitude: location.latitude,
+        longitude: location.longitude,
+      })),
+    )
+    .onConflictDoUpdate({
+      target: locations.googlePlaceId,
+      set: {
+        isSeeded: true,
+        name: sql`excluded.name`,
+        city: sql`excluded.city`,
+        state: sql`excluded.state`,
+        country: sql`excluded.country`,
+        latitude: sql`excluded.latitude`,
+        longitude: sql`excluded.longitude`,
+        updatedAt: new Date(),
+      },
+    });
+
+  console.log("   ✓ Popular city locations seeded.");
+}
+
 async function seed() {
   console.log("🌱 Starting complete database seeding for ALL 39 tables...\n");
 
@@ -64,6 +190,8 @@ async function seed() {
     // STEP 1: INDEPENDENT CATALOGS (Master Lookups with 0 Dependencies)
     // ------------------------------------------------------------------------
     console.log("📦 1/5 Seeding independent lookup tables...");
+
+    await seedLocations();
 
     const insertedLanguages = await db
       .insert(languages)
@@ -125,7 +253,8 @@ async function seed() {
           name: "Platinum",
           price: "999.00",
           duration: "monthly",
-          features: "Priority likes, message before matching, unlimited rewind, 1 free boost per week",
+          features:
+            "Priority likes, message before matching, unlimited rewind, 1 free boost per week",
           isActive: true,
         },
       ])
@@ -171,20 +300,47 @@ async function seed() {
         .values([
           { planId: planGold.id, featureId: featLikes.id, limitValue: null },
           { planId: planGold.id, featureId: featSuperLike.id, limitValue: 5 },
-          { planId: planGold.id, featureId: featSeeWhoLiked.id, limitValue: null },
+          {
+            planId: planGold.id,
+            featureId: featSeeWhoLiked.id,
+            limitValue: null,
+          },
         ])
         .onConflictDoNothing();
     }
 
-    if (planPlatinum && featLikes && featSuperLike && featSeeWhoLiked && featBoost && featFilters) {
+    if (
+      planPlatinum &&
+      featLikes &&
+      featSuperLike &&
+      featSeeWhoLiked &&
+      featBoost &&
+      featFilters
+    ) {
       await db
         .insert(planFeatures)
         .values([
-          { planId: planPlatinum.id, featureId: featLikes.id, limitValue: null },
-          { planId: planPlatinum.id, featureId: featSuperLike.id, limitValue: 10 },
-          { planId: planPlatinum.id, featureId: featSeeWhoLiked.id, limitValue: null },
+          {
+            planId: planPlatinum.id,
+            featureId: featLikes.id,
+            limitValue: null,
+          },
+          {
+            planId: planPlatinum.id,
+            featureId: featSuperLike.id,
+            limitValue: 10,
+          },
+          {
+            planId: planPlatinum.id,
+            featureId: featSeeWhoLiked.id,
+            limitValue: null,
+          },
           { planId: planPlatinum.id, featureId: featBoost.id, limitValue: 4 },
-          { planId: planPlatinum.id, featureId: featFilters.id, limitValue: null },
+          {
+            planId: planPlatinum.id,
+            featureId: featFilters.id,
+            limitValue: null,
+          },
         ])
         .onConflictDoNothing();
     }
@@ -194,7 +350,9 @@ async function seed() {
     // ------------------------------------------------------------------------
     // STEP 2: CORE USERS, SESSIONS, DEVICES, SETTINGS & SECURITY LOGS
     // ------------------------------------------------------------------------
-    console.log("👥 2/5 Seeding core users, devices, sessions, and security logs...");
+    console.log(
+      "👥 2/5 Seeding core users, devices, sessions, and security logs...",
+    );
 
     const passwordHash = await bcrypt.hash("Password@123", 10);
 
@@ -326,7 +484,18 @@ async function seed() {
     const uKarthik = userMap.get("karthik.iyer@example.com")!;
     const uDiya = userMap.get("diya.kapoor@example.com")!;
 
-    const userList = [uAdmin, uAarav, uAmmu, uAnanya, uRohan, uPriya, uVikram, uSneha, uKarthik, uDiya].filter(Boolean);
+    const userList = [
+      uAdmin,
+      uAarav,
+      uAmmu,
+      uAnanya,
+      uRohan,
+      uPriya,
+      uVikram,
+      uSneha,
+      uKarthik,
+      uDiya,
+    ].filter(Boolean);
 
     // Seed devices, sessions, login events, and user settings for all users
     const deviceMap = new Map<string, string>(); // userId -> deviceId
@@ -367,9 +536,15 @@ async function seed() {
         .values({
           userId: u.id,
           deviceToken: `fcm_device_token_${email.split("@")[0] || "user"}_2026_xyz`,
-          platform: email.includes("ammu") || email.includes("priya") ? "ios" : "android",
+          platform:
+            email.includes("ammu") || email.includes("priya")
+              ? "ios"
+              : "android",
           appVersion: "1.0.0",
-          osVersion: email.includes("ammu") || email.includes("priya") ? "iOS 18.2" : "Android 15",
+          osVersion:
+            email.includes("ammu") || email.includes("priya")
+              ? "iOS 18.2"
+              : "Android 15",
           lastActiveAt: new Date(),
         })
         .onConflictDoNothing()
@@ -411,7 +586,8 @@ async function seed() {
             success: false,
             ipAddress: "127.0.0.1",
             userAgent: "DatingApp/1.0.0 Mobile",
-            failureReason: "Invalid password attempt (simulated security audit)",
+            failureReason:
+              "Invalid password attempt (simulated security audit)",
           },
         ])
         .onConflictDoNothing();
@@ -441,12 +617,16 @@ async function seed() {
         .onConflictDoNothing();
     }
 
-    console.log("   ✓ Core users, devices, sessions, settings, and OTP tables seeded.");
+    console.log(
+      "   ✓ Core users, devices, sessions, settings, and OTP tables seeded.",
+    );
 
     // ------------------------------------------------------------------------
     // STEP 3: PROFILES (Detailed Personas with Figma Matches Screen Profiles)
     // ------------------------------------------------------------------------
-    console.log("👤 3/5 Seeding profiles, photos, education, media, and KYC...");
+    console.log(
+      "👤 3/5 Seeding profiles, photos, education, media, and KYC...",
+    );
 
     const profileData = [
       // Admin
@@ -463,11 +643,7 @@ async function seed() {
         vibes: ["Deep Talks", "Peaceful", "Creative"],
         bio: "Platform Administrator & Trust & Safety Moderator.",
         relationshipStatus: "Single",
-        city: "Bengaluru",
-        state: "Karnataka",
-        country: "India",
-        latitude: 12.9716,
-        longitude: 77.5946,
+        locationName: "Bengaluru",
       },
       // Aarav Sharma
       {
@@ -483,11 +659,7 @@ async function seed() {
         vibes: ["Adventurous", "Chill", "Deep Talks", "Positive", "Creative"],
         bio: "Software Architect & Weekend trekker. Searching for good conversations, indie music, and great filter coffee ☕",
         relationshipStatus: "Single",
-        city: "Bengaluru",
-        state: "Karnataka",
-        country: "India",
-        latitude: 12.9716,
-        longitude: 77.5946,
+        locationName: "Bengaluru",
       },
       // AMMU (Exact Figma Profile Card: Ammu, 23, 5.6 fts, Lives in Hyderabad)
       {
@@ -503,11 +675,7 @@ async function seed() {
         vibes: ["Caring", "Deep Talks", "Creative", "Positive", "Chill"],
         bio: "Looking for good vibes, genuine conversations, and a real connection. Let's explore cozy cafes and talk about art ✨",
         relationshipStatus: "Single",
-        city: "Hyderabad",
-        state: "Telangana",
-        country: "India",
-        latitude: 17.385,
-        longitude: 78.4867,
+        locationName: "Hyderabad",
       },
       // Ananya Verma
       {
@@ -523,11 +691,7 @@ async function seed() {
         vibes: ["Creative", "Romantic", "Chill", "Positive", "Classy"],
         bio: "UI/UX Designer. Obsessed with indie cinema, matcha lattes, and rooftop sunsets 🌅",
         relationshipStatus: "Single",
-        city: "Bengaluru",
-        state: "Karnataka",
-        country: "India",
-        latitude: 12.9784,
-        longitude: 77.6408,
+        locationName: "Bengaluru",
       },
       // Rohan Mehta
       {
@@ -543,11 +707,7 @@ async function seed() {
         vibes: ["Adventurous", "Fun & Funny", "Chill", "Positive", "Classy"],
         bio: "Product Manager in Fintech. Love marathon running, podcasts, and discovering hidden cocktail bars 🍸",
         relationshipStatus: "Single",
-        city: "Mumbai",
-        state: "Maharashtra",
-        country: "India",
-        latitude: 19.076,
-        longitude: 72.8777,
+        locationName: "Mumbai",
       },
       // Priya Nair
       {
@@ -563,11 +723,7 @@ async function seed() {
         vibes: ["Peaceful", "Caring", "Creative", "Deep Talks", "Chill"],
         bio: "Architectural photographer. Dog mom to a golden retriever named Bruno 🐾",
         relationshipStatus: "Single",
-        city: "Hyderabad",
-        state: "Telangana",
-        country: "India",
-        latitude: 17.4065,
-        longitude: 78.4772,
+        locationName: "Hyderabad",
       },
       // Vikram Rao
       {
@@ -580,14 +736,16 @@ async function seed() {
         foodPreference: "Non-Veg",
         drinking: "Socially",
         smoking: "No",
-        vibes: ["Creative", "Fun & Funny", "Adventurous", "Deep Talks", "Positive"],
+        vibes: [
+          "Creative",
+          "Fun & Funny",
+          "Adventurous",
+          "Deep Talks",
+          "Positive",
+        ],
         bio: "Data Scientist & AI Researcher. Passionate about guitar, board games, and sci-fi books 🚀",
         relationshipStatus: "Single",
-        city: "Hyderabad",
-        state: "Telangana",
-        country: "India",
-        latitude: 17.4485,
-        longitude: 78.3748,
+        locationName: "Hyderabad",
       },
       // Sneha Kulkarni
       {
@@ -603,11 +761,7 @@ async function seed() {
         vibes: ["Peaceful", "Creative", "Positive", "Caring", "Romantic"],
         bio: "Content strategist & potter. Plant parent and weekend baker 🥐",
         relationshipStatus: "Single",
-        city: "Pune",
-        state: "Maharashtra",
-        country: "India",
-        latitude: 18.5204,
-        longitude: 73.8567,
+        locationName: "Pune",
       },
       // Karthik Iyer
       {
@@ -623,11 +777,7 @@ async function seed() {
         vibes: ["Classy", "Deep Talks", "Romantic", "Peaceful", "Positive"],
         bio: "Investment Banker & Amateur Chef. Love classical fusion music, tennis, and culinary adventures 🍷",
         relationshipStatus: "Single",
-        city: "Chennai",
-        state: "Tamil Nadu",
-        country: "India",
-        latitude: 13.0827,
-        longitude: 80.2707,
+        locationName: "Chennai",
       },
       // Diya Kapoor
       {
@@ -643,16 +793,27 @@ async function seed() {
         vibes: ["Adventurous", "Fun & Funny", "Classy", "Positive", "Chill"],
         bio: "Fashion Stylist & Travel Enthusiast. Always planning my next trip to the mountains 🏔️",
         relationshipStatus: "Single",
-        city: "Delhi",
-        state: "Delhi",
-        country: "India",
-        latitude: 28.6139,
-        longitude: 77.209,
+        locationName: "Delhi",
       },
     ];
 
-    for (const p of profileData) {
-      await db.insert(profiles).values(p).onConflictDoNothing();
+    const seededLocations = await db
+      .select({ id: locations.id, name: locations.name })
+      .from(locations)
+      .where(eq(locations.isSeeded, true));
+    const locationIdsByName = new Map(
+      seededLocations.map((location) => [location.name, location.id]),
+    );
+
+    for (const { locationName, ...profile } of profileData) {
+      const locationId = locationIdsByName.get(locationName);
+      if (!locationId) {
+        throw new Error(`Seeded location not found: ${locationName}`);
+      }
+      await db
+        .insert(profiles)
+        .values({ ...profile, locationId })
+        .onConflictDoNothing();
     }
 
     const allDbProfiles = await db.select().from(profiles);
@@ -841,7 +1002,8 @@ async function seed() {
         documentType: "driving_license",
         documentNumberHash: "sha256_mock_rohan_dl_rejected",
         status: "rejected",
-        rejectionReason: "Document image blurred. Please re-upload clear photo ID.",
+        rejectionReason:
+          "Document image blurred. Please re-upload clear photo ID.",
         provider: "hyperverge",
         providerReference: "KYC-ROHAN-BOM-2026-08",
       },
@@ -1038,7 +1200,13 @@ async function seed() {
 
     // 5. Dating Preferences (Discovery & Algorithm Filtering)
     for (const u of userList) {
-      const isFemale = [uAmmu.id, uAnanya.id, uPriya.id, uSneha.id, uDiya.id].includes(u.id);
+      const isFemale = [
+        uAmmu.id,
+        uAnanya.id,
+        uPriya.id,
+        uSneha.id,
+        uDiya.id,
+      ].includes(u.id);
       await db
         .insert(datingPreferences)
         .values({
@@ -1066,13 +1234,19 @@ async function seed() {
     const langMar = dbLanguages.find((l) => l.name === "Marathi")?.id || 7;
 
     const intPhoto = dbInterests.find((i) => i.name === "Photography")?.id || 1;
-    const intHike = dbInterests.find((i) => i.name === "Hiking & Outdoors")?.id || 2;
-    const intCoffee = dbInterests.find((i) => i.name === "Coffee & Cafes")?.id || 3;
-    const intFood = dbInterests.find((i) => i.name === "Cooking & Foodie")?.id || 4;
-    const intMusic = dbInterests.find((i) => i.name === "Live Music & Concerts")?.id || 5;
+    const intHike =
+      dbInterests.find((i) => i.name === "Hiking & Outdoors")?.id || 2;
+    const intCoffee =
+      dbInterests.find((i) => i.name === "Coffee & Cafes")?.id || 3;
+    const intFood =
+      dbInterests.find((i) => i.name === "Cooking & Foodie")?.id || 4;
+    const intMusic =
+      dbInterests.find((i) => i.name === "Live Music & Concerts")?.id || 5;
     const intGym = dbInterests.find((i) => i.name === "Fitness & Gym")?.id || 6;
-    const intTech = dbInterests.find((i) => i.name === "Tech & Coding")?.id || 8;
-    const intTravel = dbInterests.find((i) => i.name === "Travel & Backpacking")?.id || 9;
+    const intTech =
+      dbInterests.find((i) => i.name === "Tech & Coding")?.id || 8;
+    const intTravel =
+      dbInterests.find((i) => i.name === "Travel & Backpacking")?.id || 9;
 
     // Ammu Profile Languages & Interests
     const pAmmu = profileMap.get(uAmmu.id);
@@ -1087,12 +1261,10 @@ async function seed() {
 
       await db
         .insert(profileInterests)
-        .values([
-          { profileId: pAmmu.id, interestId: intPhoto },
-          { profileId: pAmmu.id, interestId: intMusic },
-          { profileId: pAmmu.id, interestId: intTravel },
-          { profileId: pAmmu.id, interestId: intCoffee },
-        ])
+        .values({
+          profileId: pAmmu.id,
+          interestIds: [intPhoto, intMusic, intTravel, intCoffee],
+        })
         .onConflictDoNothing();
     }
 
@@ -1109,11 +1281,10 @@ async function seed() {
 
       await db
         .insert(profileInterests)
-        .values([
-          { profileId: pAarav.id, interestId: intTech },
-          { profileId: pAarav.id, interestId: intHike },
-          { profileId: pAarav.id, interestId: intCoffee },
-        ])
+        .values({
+          profileId: pAarav.id,
+          interestIds: [intTech, intHike, intCoffee],
+        })
         .onConflictDoNothing();
     }
 
@@ -1130,11 +1301,10 @@ async function seed() {
 
       await db
         .insert(profileInterests)
-        .values([
-          { profileId: pAnanya.id, interestId: intCoffee },
-          { profileId: pAnanya.id, interestId: intMusic },
-          { profileId: pAnanya.id, interestId: intTravel },
-        ])
+        .values({
+          profileId: pAnanya.id,
+          interestIds: [intCoffee, intMusic, intTravel],
+        })
         .onConflictDoNothing();
     }
 
@@ -1151,11 +1321,10 @@ async function seed() {
 
       await db
         .insert(profileInterests)
-        .values([
-          { profileId: pVikram.id, interestId: intTech },
-          { profileId: pVikram.id, interestId: intMusic },
-          { profileId: pVikram.id, interestId: intGym },
-        ])
+        .values({
+          profileId: pVikram.id,
+          interestIds: [intTech, intMusic, intGym],
+        })
         .onConflictDoNothing();
     }
 
@@ -1172,20 +1341,23 @@ async function seed() {
 
       await db
         .insert(profileInterests)
-        .values([
-          { profileId: pPriya.id, interestId: intPhoto },
-          { profileId: pPriya.id, interestId: intTravel },
-          { profileId: pPriya.id, interestId: intFood },
-        ])
+        .values({
+          profileId: pPriya.id,
+          interestIds: [intPhoto, intTravel, intFood],
+        })
         .onConflictDoNothing();
     }
 
-    console.log("   ✓ Profiles, photos, education, media, KYC, and preferences seeded.");
+    console.log(
+      "   ✓ Profiles, photos, education, media, KYC, and preferences seeded.",
+    );
 
     // ------------------------------------------------------------------------
     // STEP 5: MATCHING, CHAT, SAFETY, NOTIFICATIONS & MONETIZATION
     // ------------------------------------------------------------------------
-    console.log("💘 5/5 Seeding matches, chat conversations, safety, notifications, and payments...");
+    console.log(
+      "💘 5/5 Seeding matches, chat conversations, safety, notifications, and payments...",
+    );
 
     // Helper for canonical pair ordering
     const getCanonicalPair = (id1: string, id2: string) =>
@@ -1199,18 +1371,78 @@ async function seed() {
     // 5. Rohan & Priya -> Rohan like, Priya pass
     // 6. Vikram & Ananya -> Vikram super_like
     const swipePairs = [
-      { userId: uAarav.id, targetUserId: uAmmu.id, action: "like", source: "discovery" },
-      { userId: uAmmu.id, targetUserId: uAarav.id, action: "like", source: "discovery" },
-      { userId: uAarav.id, targetUserId: uAnanya.id, action: "like", source: "discovery" },
-      { userId: uAnanya.id, targetUserId: uAarav.id, action: "like", source: "discovery" },
-      { userId: uVikram.id, targetUserId: uAmmu.id, action: "like", source: "discovery" },
-      { userId: uAmmu.id, targetUserId: uVikram.id, action: "like", source: "discovery" },
-      { userId: uKarthik.id, targetUserId: uPriya.id, action: "like", source: "discovery" },
-      { userId: uPriya.id, targetUserId: uKarthik.id, action: "like", source: "discovery" },
-      { userId: uRohan.id, targetUserId: uPriya.id, action: "like", source: "discovery" },
-      { userId: uPriya.id, targetUserId: uRohan.id, action: "reject", source: "discovery" },
-      { userId: uVikram.id, targetUserId: uAnanya.id, action: "super_like", source: "discovery" },
-      { userId: uKarthik.id, targetUserId: uAmmu.id, action: "super_like", source: "discovery" },
+      {
+        userId: uAarav.id,
+        targetUserId: uAmmu.id,
+        action: "like",
+        source: "discovery",
+      },
+      {
+        userId: uAmmu.id,
+        targetUserId: uAarav.id,
+        action: "like",
+        source: "discovery",
+      },
+      {
+        userId: uAarav.id,
+        targetUserId: uAnanya.id,
+        action: "like",
+        source: "discovery",
+      },
+      {
+        userId: uAnanya.id,
+        targetUserId: uAarav.id,
+        action: "like",
+        source: "discovery",
+      },
+      {
+        userId: uVikram.id,
+        targetUserId: uAmmu.id,
+        action: "like",
+        source: "discovery",
+      },
+      {
+        userId: uAmmu.id,
+        targetUserId: uVikram.id,
+        action: "like",
+        source: "discovery",
+      },
+      {
+        userId: uKarthik.id,
+        targetUserId: uPriya.id,
+        action: "like",
+        source: "discovery",
+      },
+      {
+        userId: uPriya.id,
+        targetUserId: uKarthik.id,
+        action: "like",
+        source: "discovery",
+      },
+      {
+        userId: uRohan.id,
+        targetUserId: uPriya.id,
+        action: "like",
+        source: "discovery",
+      },
+      {
+        userId: uPriya.id,
+        targetUserId: uRohan.id,
+        action: "reject",
+        source: "discovery",
+      },
+      {
+        userId: uVikram.id,
+        targetUserId: uAnanya.id,
+        action: "super_like",
+        source: "discovery",
+      },
+      {
+        userId: uKarthik.id,
+        targetUserId: uAmmu.id,
+        action: "super_like",
+        source: "discovery",
+      },
     ];
 
     for (const sw of swipePairs) {
@@ -1233,7 +1465,10 @@ async function seed() {
       .returning();
 
     // Pair 2: Aarav & Ananya
-    const [u1AaravAnanya, u2AaravAnanya] = getCanonicalPair(uAarav.id, uAnanya.id);
+    const [u1AaravAnanya, u2AaravAnanya] = getCanonicalPair(
+      uAarav.id,
+      uAnanya.id,
+    );
     const [matchAaravAnanya] = await db
       .insert(matches)
       .values({
@@ -1259,7 +1494,10 @@ async function seed() {
       .returning();
 
     // Pair 4: Karthik & Priya
-    const [u1KarthikPriya, u2KarthikPriya] = getCanonicalPair(uKarthik.id, uPriya.id);
+    const [u1KarthikPriya, u2KarthikPriya] = getCanonicalPair(
+      uKarthik.id,
+      uPriya.id,
+    );
     await db
       .insert(matches)
       .values({
@@ -1294,7 +1532,8 @@ async function seed() {
             conversationId: convAaravAmmu.id,
             senderId: uAarav.id,
             messageType: "text",
-            content: "Hey Ammu! Loved your design portfolio & vibe ✨ How is Hyderabad treating you?",
+            content:
+              "Hey Ammu! Loved your design portfolio & vibe ✨ How is Hyderabad treating you?",
           })
           .onConflictDoNothing()
           .returning();
@@ -1305,7 +1544,8 @@ async function seed() {
             conversationId: convAaravAmmu.id,
             senderId: uAmmu.id,
             messageType: "text",
-            content: "Hey Aarav! Hyderabad has been amazing 😊 Exploring Jubilee Hills cafes this weekend. How about you?",
+            content:
+              "Hey Aarav! Hyderabad has been amazing 😊 Exploring Jubilee Hills cafes this weekend. How about you?",
           })
           .onConflictDoNothing()
           .returning();
@@ -1313,13 +1553,21 @@ async function seed() {
         if (msg1) {
           await db
             .insert(messageReads)
-            .values({ messageId: msg1.id, userId: uAmmu.id, readAt: new Date() })
+            .values({
+              messageId: msg1.id,
+              userId: uAmmu.id,
+              readAt: new Date(),
+            })
             .onConflictDoNothing();
         }
         if (msg2) {
           await db
             .insert(messageReads)
-            .values({ messageId: msg2.id, userId: uAarav.id, readAt: new Date() })
+            .values({
+              messageId: msg2.id,
+              userId: uAarav.id,
+              readAt: new Date(),
+            })
             .onConflictDoNothing();
         }
       }
@@ -1356,7 +1604,11 @@ async function seed() {
         if (msg1) {
           await db
             .insert(messageReads)
-            .values({ messageId: msg1.id, userId: uAnanya.id, readAt: new Date() })
+            .values({
+              messageId: msg1.id,
+              userId: uAnanya.id,
+              readAt: new Date(),
+            })
             .onConflictDoNothing();
         }
       }
@@ -1434,7 +1686,8 @@ async function seed() {
         userId: uAmmu.id,
         type: "new_like",
         title: "You got a new like!",
-        message: "Someone in Hyderabad liked your profile. Check your Likes tab!",
+        message:
+          "Someone in Hyderabad liked your profile. Check your Likes tab!",
         data: { screen: "LikesTab" },
       },
       {
@@ -1585,9 +1838,13 @@ async function seed() {
         .onConflictDoNothing();
     }
 
-    console.log("\n============================================================");
+    console.log(
+      "\n============================================================",
+    );
     console.log("✅ ALL 39 DATABASE TABLES POPULATED & SEEDED SUCCESSFULLY!");
-    console.log("============================================================\n");
+    console.log(
+      "============================================================\n",
+    );
   } catch (err) {
     console.error("❌ Seeding failed with error:", err);
     process.exitCode = 1;

@@ -49,6 +49,10 @@ export class ProfileController {
   }
 
   static async getMyProfile(req: Request, res: Response): Promise<Response> {
+    res.setHeader("Cache-Control", "private, no-store");
+    delete req.headers["if-none-match"];
+    delete req.headers["if-modified-since"];
+
     const userId = getUserId(req);
 
     if (!userId) {
@@ -254,7 +258,10 @@ export class ProfileController {
     });
   }
 
-  static async verifyKycDocument(req: Request, res: Response): Promise<Response> {
+  static async verifyKycDocument(
+    req: Request,
+    res: Response,
+  ): Promise<Response> {
     const userId = getUserId(req);
     if (!userId) {
       return ApiResponse.error(res, {
@@ -301,7 +308,10 @@ export class ProfileController {
     });
   }
 
-  static async validateSinglePhoto(req: Request, res: Response): Promise<Response> {
+  static async validateSinglePhoto(
+    req: Request,
+    res: Response,
+  ): Promise<Response> {
     const userId = getUserId(req);
     if (!userId) {
       return ApiResponse.error(res, {
@@ -342,7 +352,9 @@ export class ProfileController {
       });
     }
 
-    const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+    const files = req.files as
+      | { [fieldname: string]: Express.Multer.File[] }
+      | undefined;
     const documentFile = files?.["documentPhoto"]?.[0] || req.file;
     const selfieFile = files?.["selfiePhoto"]?.[0];
 
@@ -351,7 +363,10 @@ export class ProfileController {
       req.body.documentType || "Aadhaar Card",
       req.body.documentNumber,
       documentFile
-        ? { buffer: documentFile.buffer, originalName: documentFile.originalname }
+        ? {
+            buffer: documentFile.buffer,
+            originalName: documentFile.originalname,
+          }
         : undefined,
       selfieFile
         ? { buffer: selfieFile.buffer, originalName: selfieFile.originalname }

@@ -9,6 +9,7 @@
     "dev": "tsx watch src/server.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx src/test-auth-flow.ts",
+    "test:account-lifecycle": "tsx --test src/test-account-lifecycle.ts",
     "test:api": "npm run typecheck",
     "test:live": "tsx src/test-live-auth.ts",
     "test:db": "tsx src/test-db.ts",

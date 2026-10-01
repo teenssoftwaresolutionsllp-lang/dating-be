@@ -8,6 +8,7 @@ import {
 import { generateOTP, sendSmsOTP } from "../utils/otp";
 import { generateTokens, verifyRefreshToken } from "../utils/jwt";
 import AuthRepository from "../repositories/auth.repository";
+import AccountRepository from "../repositories/account.repository";
 
 import type {
   AppError,
@@ -225,33 +226,10 @@ export class AuthService {
     // Mark OTP as verified
     await AuthRepository.markOtpVerified(otpRecord.id, now);
 
-    // Check if user already exists
-    const existingUser = await AuthRepository.findUserByPhone(fullPhone);
-
-    let user: User;
-    let isNewUser = false;
-
-    if (!existingUser) {
-      // Auto-register new user
-      isNewUser = true;
-      user = await AuthRepository.createUser({
-        phone: fullPhone,
-        phoneVerified: true,
-        status: "active",
-        authProvider: "phone",
-      });
-    } else {
-      // Update existing user verification and display language
-      const updates = {
-        phoneVerified: true,
-        updatedAt: now,
-      };
-
-      user = await AuthRepository.markUserPhoneVerified(
-        existingUser.id,
-        updates.updatedAt,
-      );
-    }
+    const { user, isNewUser } = await AccountRepository.resolvePhoneLogin(
+      fullPhone,
+      now,
+    );
 
     const safeUser = AuthService.toSafeUser(
       user,
@@ -266,7 +244,7 @@ export class AuthService {
     const refreshTokenHash = AuthService.hashRefreshToken(tokens.refreshToken);
     const sessionExpiry = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-    await AuthRepository.createSession({
+    await AccountRepository.createSessionForActiveAccount(user.id, {
       id: sessionId,
       userId: user.id,
       refreshTokenHash,

@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Dating App - Matches, Discovery & Messaging APIs",
-    "description": "Production Postman Collection for Dating App Discovery Feed, Swiping (Like/Pass/Superlike), Mutual Matches with Voluntary Chat, Likes Tab, Safety (Block/Report), and Chat Messaging.",
+    "description": "Postman Collection for Dating App APIs, including discovery, messaging, and authenticated account lifecycle flows.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -22,6 +22,16 @@
     },
     {
       "key": "messageId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "deletionOtp",
       "value": "",
       "type": "string"
     }
@@ -371,6 +381,92 @@
               "raw": "{{baseUrl}}/api/v1/messages/delete/{{messageId}}",
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "messages", "delete", "{{messageId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Account Lifecycle",
+      "item": [
+        {
+          "name": "Deactivate Account",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/account/deactivate",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "account", "deactivate"]
+            }
+          }
+        },
+        {
+          "name": "Request Account Deletion OTP",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.devOtp) {",
+                  "  pm.collectionVariables.set('deletionOtp', jsonData.data.devOtp);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/account/deletion-otp",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "account", "deletion-otp"]
+            }
+          }
+        },
+        {
+          "name": "Confirm Account Deletion (Destructive)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"otp\": \"{{deletionOtp}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/account/delete",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "account", "delete"]
             }
           }
         }

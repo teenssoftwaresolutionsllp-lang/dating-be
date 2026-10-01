@@ -5,7 +5,9 @@ import helmet from "helmet";
 import morgan from "morgan";
 
 import authRoutes from "./routes/auth.routes";
+import accountRoutes from "./routes/account.routes";
 import profileRoutes from "./routes/profile.routes";
+import locationRoutes from "./routes/location.routes";
 import matchRoutes from "./routes/match.routes";
 import messageRoutes from "./routes/message.routes";
 import { notFoundHandler, errorHandler } from "./middleware/error.middleware";
@@ -55,9 +57,11 @@ app.get("/favicon.ico", (_req: Request, res: Response) => {
 // =================================================================
 // Authentication
 app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1/account", accountRoutes);
 
 // Profile & Onboarding
 app.use("/api/v1/profile", profileRoutes);
+app.use("/api/v1", locationRoutes);
 
 // Matches, Discovery & Swiping
 app.use("/api/v1/matches", matchRoutes);

@@ -44,15 +44,21 @@ class ProfileService {
    * Retrieves the user's verified KYC selfie image buffer from either remote Cloudinary CDN
    * or local disk fallback storage.
    */
-  private async getKycSelfieBuffer(userId: string): Promise<Buffer | undefined> {
+  private async getKycSelfieBuffer(
+    userId: string,
+  ): Promise<Buffer | undefined> {
     const kyc = await ProfileRepository.findKycByUserId(userId);
     if (!kyc?.providerReference) {
-      console.warn(`[ProfileService] No KYC providerReference found for user: ${userId}`);
+      console.warn(
+        `[ProfileService] No KYC providerReference found for user: ${userId}`,
+      );
       return undefined;
     }
 
     const ref = kyc.providerReference.trim();
-    console.log(`[ProfileService] Retrieving KYC selfie for user ${userId} from: ${ref}`);
+    console.log(
+      `[ProfileService] Retrieving KYC selfie for user ${userId} from: ${ref}`,
+    );
 
     // Case 1: Remote HTTP/HTTPS URL
     if (ref.startsWith("http://") || ref.startsWith("https://")) {
@@ -61,11 +67,16 @@ class ProfileService {
         if (response.ok) {
           const arrayBuffer = await response.arrayBuffer();
           const buffer = Buffer.from(arrayBuffer);
-          console.log(`[ProfileService] Successfully fetched remote KYC selfie (${buffer.length} bytes)`);
+          console.log(
+            `[ProfileService] Successfully fetched remote KYC selfie (${buffer.length} bytes)`,
+          );
           return buffer;
         }
       } catch (fetchErr) {
-        console.warn(`[ProfileService] Failed to fetch remote KYC selfie from ${ref}:`, fetchErr);
+        console.warn(
+          `[ProfileService] Failed to fetch remote KYC selfie from ${ref}:`,
+          fetchErr,
+        );
       }
     }
 
@@ -76,21 +87,32 @@ class ProfileService {
         ref,
         path.join(process.cwd(), cleanPath),
         path.join(process.cwd(), ref),
-        path.join(process.cwd(), "uploads", cleanPath.replace(/^uploads[\\\/]/, "")),
+        path.join(
+          process.cwd(),
+          "uploads",
+          cleanPath.replace(/^uploads[\\\/]/, ""),
+        ),
       ];
 
       for (const candidate of candidates) {
         if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
           const buffer = await fs.promises.readFile(candidate);
-          console.log(`[ProfileService] Successfully loaded local KYC selfie from ${candidate} (${buffer.length} bytes)`);
+          console.log(
+            `[ProfileService] Successfully loaded local KYC selfie from ${candidate} (${buffer.length} bytes)`,
+          );
           return buffer;
         }
       }
     } catch (fsErr) {
-      console.warn(`[ProfileService] Failed to read local KYC selfie file ${ref}:`, fsErr);
+      console.warn(
+        `[ProfileService] Failed to read local KYC selfie file ${ref}:`,
+        fsErr,
+      );
     }
 
-    console.warn(`[ProfileService] Could not resolve KYC selfie image buffer from ref: ${ref}`);
+    console.warn(
+      `[ProfileService] Could not resolve KYC selfie image buffer from ref: ${ref}`,
+    );
     return undefined;
   }
 
@@ -106,16 +128,17 @@ class ProfileService {
         file.buffer,
         file.originalname,
         selfieBuffer,
-        isPrimary
+        isPrimary,
       );
       if (!validation.isValid) {
-        const error = new Error(validation.error || "Invalid profile photo") as AppError;
+        const error = new Error(
+          validation.error || "Invalid profile photo",
+        ) as AppError;
         error.statusCode = 400;
         error.code = validation.code || "INVALID_PROFILE_PHOTO";
         throw error;
       }
     }
-
 
     const uploadedAssets: Array<{
       publicId: string;
@@ -407,7 +430,9 @@ class ProfileService {
       documentType,
     );
     if (!docValidation.isValid) {
-      const error = new Error(docValidation.error || "Invalid government ID photo") as AppError;
+      const error = new Error(
+        docValidation.error || "Invalid government ID photo",
+      ) as AppError;
       error.statusCode = 400;
       error.code = docValidation.code || "INVALID_KYC_DOCUMENT";
       throw error;
@@ -420,7 +445,9 @@ class ProfileService {
         selfieImage.originalName,
       );
       if (!selfieValidation.isValid) {
-        const error = new Error(selfieValidation.error || "Invalid selfie photo") as AppError;
+        const error = new Error(
+          selfieValidation.error || "Invalid selfie photo",
+        ) as AppError;
         error.statusCode = 400;
         error.code = selfieValidation.code || "INVALID_SELFIE";
         throw error;
@@ -460,6 +487,7 @@ class ProfileService {
         documentNumberHash,
         { storageKey: uploadedAsset.public_id, url: uploadedAsset.secure_url },
         selfieUrl,
+        selfiePublicId,
       );
 
       return { status: kyc.status };
@@ -481,7 +509,9 @@ class ProfileService {
     file?: { buffer: Buffer; originalName: string },
   ): Promise<{ valid: boolean; message: string; metadata?: any }> {
     if (!file) {
-      const error = new Error("Document photo is required for verification") as AppError;
+      const error = new Error(
+        "Document photo is required for verification",
+      ) as AppError;
       error.statusCode = 400;
       error.code = "DOCUMENT_PHOTO_REQUIRED";
       throw error;
@@ -494,7 +524,9 @@ class ProfileService {
     );
 
     if (!validation.isValid) {
-      const error = new Error(validation.error || "Invalid government ID photo") as AppError;
+      const error = new Error(
+        validation.error || "Invalid government ID photo",
+      ) as AppError;
       error.statusCode = 400;
       error.code = validation.code || "INVALID_KYC_DOCUMENT";
       throw error;
@@ -507,23 +539,25 @@ class ProfileService {
     };
   }
 
-  async validateSelfieDoc(
-    file?: { buffer: Buffer; originalName: string },
-  ): Promise<{ valid: boolean; message: string; metadata?: any }> {
+  async validateSelfieDoc(file?: {
+    buffer: Buffer;
+    originalName: string;
+  }): Promise<{ valid: boolean; message: string; metadata?: any }> {
     if (!file) {
-      const error = new Error("Selfie photo is required for verification") as AppError;
+      const error = new Error(
+        "Selfie photo is required for verification",
+      ) as AppError;
       error.statusCode = 400;
       error.code = "SELFIE_PHOTO_REQUIRED";
       throw error;
     }
 
-    const validation = validateSelfiePhoto(
-      file.buffer,
-      file.originalName,
-    );
+    const validation = validateSelfiePhoto(file.buffer, file.originalName);
 
     if (!validation.isValid) {
-      const error = new Error(validation.error || "Invalid selfie photo") as AppError;
+      const error = new Error(
+        validation.error || "Invalid selfie photo",
+      ) as AppError;
       error.statusCode = 400;
       error.code = validation.code || "INVALID_SELFIE";
       throw error;
@@ -551,7 +585,9 @@ class ProfileService {
     let selfieBuffer: Buffer | undefined;
     if (isPrimary) {
       selfieBuffer = await this.getKycSelfieBuffer(userId);
-      console.log(`[validateSinglePhoto] User ${userId}, isPrimary=${isPrimary}, selfieBuffer available: ${Boolean(selfieBuffer)}`);
+      console.log(
+        `[validateSinglePhoto] User ${userId}, isPrimary=${isPrimary}, selfieBuffer available: ${Boolean(selfieBuffer)}`,
+      );
     }
 
     const validation = validateProfilePhoto(
@@ -621,6 +657,7 @@ class ProfileService {
     }
 
     if (
+      !data.profile?.locationId &&
       !data.profile?.city &&
       !data.profile?.state &&
       !data.profile?.country &&
@@ -686,7 +723,8 @@ class ProfileService {
       profile.gender &&
       profile.dateOfBirth &&
       profile.heightCm &&
-      (profile.city ||
+      (profile.locationId ||
+        profile.city ||
         profile.state ||
         profile.country ||
         (profile.latitude !== null && profile.longitude !== null))
@@ -699,7 +737,8 @@ class ProfileService {
       profile.gender &&
       profile.dateOfBirth &&
       profile.heightCm &&
-      (profile.city ||
+      (profile.locationId ||
+        profile.city ||
         profile.state ||
         profile.country ||
         (profile.latitude !== null && profile.longitude !== null)) &&

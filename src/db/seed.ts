@@ -1,6 +1,6 @@
 import "dotenv/config";
 import bcrypt from "bcryptjs";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db, pool } from "./index";
 import {
   languages,
@@ -17,6 +17,7 @@ import {
   userLoginEvents,
   userSettings,
   notificationSettings,
+  locations,
   profileLanguages,
   profileInterests,
   education,
@@ -56,6 +57,131 @@ import {
  * 5. Monetization (subscriptions, payments, webhook events, feature usage quotas)
  */
 
+const POPULAR_LOCATIONS = [
+  {
+    googlePlaceId: "ChIJQ-BO1oT9cTcR1s0QmLQUaD0",
+    name: "Ahmedabad",
+    city: "Ahmedabad",
+    state: "Gujarat",
+    country: "India",
+    latitude: 23.0225,
+    longitude: 72.5714,
+  },
+  {
+    googlePlaceId: "ChIJ7YqPDxB4bDkR0TpnLwR-IwU",
+    name: "Pune",
+    city: "Pune",
+    state: "Maharashtra",
+    country: "India",
+    latitude: 18.5204,
+    longitude: 73.8567,
+  },
+  {
+    googlePlaceId: "ChIJU4xAjbJfcTcR4WNoB6bPzvY",
+    name: "Surat",
+    city: "Surat",
+    state: "Gujarat",
+    country: "India",
+    latitude: 21.1702,
+    longitude: 72.8311,
+  },
+  {
+    googlePlaceId: "ChIJdZp5AD2qDzkR3mGQhY0yWJ0",
+    name: "Jaipur",
+    city: "Jaipur",
+    state: "Rajasthan",
+    country: "India",
+    latitude: 26.9124,
+    longitude: 75.7873,
+  },
+  {
+    googlePlaceId: "ChIJL_P_CXMEDTkRw0ZdG-0x7QY",
+    name: "Delhi",
+    city: "Delhi",
+    state: "National Capital Territory of Delhi",
+    country: "India",
+    latitude: 28.6139,
+    longitude: 77.209,
+  },
+  {
+    googlePlaceId: "ChIJwe1EZjDG5zsRaYxkjY_tpF0",
+    name: "Mumbai",
+    city: "Mumbai",
+    state: "Maharashtra",
+    country: "India",
+    latitude: 19.076,
+    longitude: 72.8777,
+  },
+  {
+    googlePlaceId: "ChIJN0-lvLhL4TkR0mRf0HCaJhw",
+    name: "Kolkata",
+    city: "Kolkata",
+    state: "West Bengal",
+    country: "India",
+    latitude: 22.5726,
+    longitude: 88.3639,
+  },
+  {
+    googlePlaceId: "ChIJbU7iVw9M5zsRbgxQhA4b5I8",
+    name: "Bengaluru",
+    city: "Bengaluru",
+    state: "Karnataka",
+    country: "India",
+    latitude: 12.9716,
+    longitude: 77.5946,
+  },
+  {
+    googlePlaceId: "ChIJYTN9T_7LrjsRM9i4Ae2gja0",
+    name: "Chennai",
+    city: "Chennai",
+    state: "Tamil Nadu",
+    country: "India",
+    latitude: 13.0827,
+    longitude: 80.2707,
+  },
+  {
+    googlePlaceId: "ChIJx8d9yJ6qCzoRdnmuN6G3m5Y",
+    name: "Hyderabad",
+    city: "Hyderabad",
+    state: "Telangana",
+    country: "India",
+    latitude: 17.385,
+    longitude: 78.4867,
+  },
+] as const;
+
+async function seedLocations() {
+  await db
+    .insert(locations)
+    .values(
+      POPULAR_LOCATIONS.map((location) => ({
+        googlePlaceId: location.googlePlaceId,
+        isSeeded: true,
+        name: location.name,
+        city: location.city,
+        state: location.state,
+        country: location.country,
+        latitude: location.latitude,
+        longitude: location.longitude,
+      })),
+    )
+    .onConflictDoUpdate({
+      target: locations.googlePlaceId,
+      set: {
+        isSeeded: true,
+        name: sql`excluded.name`,
+        city: sql`excluded.city`,
+        state: sql`excluded.state`,
+        country: sql`excluded.country`,
+        latitude: sql`excluded.latitude`,
+        longitude: sql`excluded.longitude`,
+        updatedAt: new Date(),
+      },
+    });
+
+  console.log("   ✓ Popular city locations seeded.");
+}
+
 async function seed() {
   console.log("🌱 Starting complete database seeding for ALL 39 tables...\n");
 
@@ -64,6 +190,8 @@ async function seed() {
     // STEP 1: INDEPENDENT CATALOGS (Master Lookups with 0 Dependencies)
     // ------------------------------------------------------------------------
     console.log("📦 1/5 Seeding independent lookup tables...");
+
+    await seedLocations();
 
     const insertedLanguages = await db
       .insert(languages)

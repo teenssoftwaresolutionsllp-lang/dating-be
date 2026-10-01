@@ -25,7 +25,6 @@ async function testUpdate() {
         name: "Test Bunny",
         gender: "male",
         religion: "Hindu",
-        city: "Hyderabad",
         heightCm: 178,
       }),
     });

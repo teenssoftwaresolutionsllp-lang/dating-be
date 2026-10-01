@@ -57,6 +57,13 @@
       "when": 1790785094317,
       "tag": "0007_lowly_fabian_cortez",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790845381439,
+      "tag": "0008_lucky_sway",
+      "breakpoints": true
     }
   ]
 }

@@ -272,21 +272,9 @@ class ProfileService {
 
     const nextStep = this.getNextStep(mergedProfile, status.onboardingStep);
 
-    const hasLocationUpdate = [
-      "city",
-      "state",
-      "country",
-      "latitude",
-      "longitude",
-    ].some((field) => values[field as keyof ProfileUpdate] !== undefined);
-
-    const profileValues = hasLocationUpdate
-      ? { ...values, locationUpdatedAt: new Date() }
-      : values;
-
     return ProfileRepository.saveProfileAndStep(
       userId,
-      profileValues,
+      values,
       nextStep,
     );
   }
@@ -656,13 +644,7 @@ class ProfileService {
       missingSteps.push("BASIC_DETAILS");
     }
 
-    if (
-      !data.profile?.locationId &&
-      !data.profile?.city &&
-      !data.profile?.state &&
-      !data.profile?.country &&
-      (data.profile?.latitude === null || data.profile?.longitude === null)
-    ) {
+    if (!data.profile?.locationId) {
       missingSteps.push("LOCATION");
     }
 
@@ -704,6 +686,7 @@ class ProfileService {
 
   private getNextStep(profile: Partial<Profile>, currentStep: string): string {
     let nextStep = "BASIC_DETAILS";
+    const hasLocation = Boolean(profile.locationId);
 
     if (profile.name && profile.gender) {
       nextStep = "BIRTHDAY";
@@ -723,11 +706,7 @@ class ProfileService {
       profile.gender &&
       profile.dateOfBirth &&
       profile.heightCm &&
-      (profile.locationId ||
-        profile.city ||
-        profile.state ||
-        profile.country ||
-        (profile.latitude !== null && profile.longitude !== null))
+      hasLocation
     ) {
       nextStep = "RELATIONSHIP";
     }
@@ -737,11 +716,7 @@ class ProfileService {
       profile.gender &&
       profile.dateOfBirth &&
       profile.heightCm &&
-      (profile.locationId ||
-        profile.city ||
-        profile.state ||
-        profile.country ||
-        (profile.latitude !== null && profile.longitude !== null)) &&
+      hasLocation &&
       profile.relationshipStatus
     ) {
       nextStep = "LANGUAGES";

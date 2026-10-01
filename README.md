@@ -242,7 +242,7 @@ Database Architecture (35 Production Tables)
 
 - `users.locked_until`: Timestamp indicating when a brute-force locked account will be released.
 - `users.failed_login_attempts`: Consecutive failed logins counter.
-- `profiles.latitude` & `profiles.longitude`: Geo-coordinates for radial proximity calculations.
+- `profiles.location_id`: Reference to the canonical location record, including its geo-coordinates.
 - `matches.user1_id` & `matches.user2_id`: Strictly ordered UUIDs (`user1_id < user2_id`).
 - `messages.client_message_id`: Client-generated UUID ensuring network retry message deduplication.
 - `subscription_events.event_id`: Gateway webhook event ID ensuring webhook idempotency.

@@ -12,12 +12,22 @@ import {
   swipes,
   swipeEvents,
   matches,
+  locations,
   conversations,
   conversationMembers,
   blocks,
   reports,
 } from "../db/schema";
-import { eq, and, or, desc, notInArray, sql, inArray } from "drizzle-orm";
+import {
+  eq,
+  and,
+  or,
+  desc,
+  notInArray,
+  sql,
+  inArray,
+  getTableColumns,
+} from "drizzle-orm";
 import type { AppError, SwipeDirection } from "../types/index";
 import {
   calculateTrustScore,
@@ -169,8 +179,9 @@ export class MatchService {
 
     // 4. Fetch Profiles
     const candidateProfiles = await db
-      .select()
+      .select({ ...getTableColumns(profiles), city: locations.city })
       .from(profiles)
+      .leftJoin(locations, eq(profiles.locationId, locations.id))
       .where(inArray(profiles.userId, candidateIds));
 
     // 5. Fetch Photos
@@ -539,8 +550,9 @@ export class MatchService {
 
     // 2. Fetch other users' profile details
     const userProfiles = await db
-      .select()
+      .select({ ...getTableColumns(profiles), city: locations.city })
       .from(profiles)
+      .leftJoin(locations, eq(profiles.locationId, locations.id))
       .where(inArray(profiles.userId, otherUserIds));
 
     const photos = await db
@@ -722,8 +734,9 @@ export class MatchService {
     const swiperIds = receivedSwipes.map((s) => s.swiperId);
 
     const swiperProfiles = await db
-      .select()
+      .select({ ...getTableColumns(profiles), city: locations.city })
       .from(profiles)
+      .leftJoin(locations, eq(profiles.locationId, locations.id))
       .where(inArray(profiles.userId, swiperIds));
 
     const photos = await db
@@ -880,8 +893,9 @@ export class MatchService {
     const targetIds = sentSwipes.map((s) => s.targetUserId);
 
     const targetProfiles = await db
-      .select()
+      .select({ ...getTableColumns(profiles), city: locations.city })
       .from(profiles)
+      .leftJoin(locations, eq(profiles.locationId, locations.id))
       .where(inArray(profiles.userId, targetIds));
 
     const photos = await db
@@ -987,8 +1001,9 @@ export class MatchService {
     }
 
     const candidateProfiles = await db
-      .select()
+      .select({ ...getTableColumns(profiles), city: locations.city })
       .from(profiles)
+      .leftJoin(locations, eq(profiles.locationId, locations.id))
       .where(inArray(profiles.userId, candidateIds));
 
     const candidatePhotos = await db

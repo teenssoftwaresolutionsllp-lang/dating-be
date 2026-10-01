@@ -121,8 +121,8 @@ export type NewLocation = typeof locations.$inferInsert;
 
 /**
  * profiles
- * Candidate-facing profile information shown to other users, including structured
- * location coordinates for geographic matching algorithms.
+ * Candidate-facing profile information shown to other users, with a reference to
+ * the canonical location record.
  */
 export const profiles = pgTable(
   "profiles",
@@ -146,11 +146,6 @@ export const profiles = pgTable(
     locationId: uuid("location_id").references(() => locations.id, {
       onDelete: "set null",
     }),
-    city: varchar("city", { length: 100 }),
-    state: varchar("state", { length: 100 }),
-    country: varchar("country", { length: 100 }),
-    latitude: doublePrecision("latitude"),
-    longitude: doublePrecision("longitude"),
     locationUpdatedAt: timestamp("location_updated_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -164,8 +159,6 @@ export const profiles = pgTable(
     index("profiles_gender_idx").on(table.gender),
     index("profiles_dob_idx").on(table.dateOfBirth),
     index("profiles_location_id_idx").on(table.locationId),
-    index("profiles_city_idx").on(table.city),
-    index("profiles_lat_long_idx").on(table.latitude, table.longitude),
     check(
       "profiles_height_positive_check",
       sql`${table.heightCm} IS NULL OR ${table.heightCm} > 0`,

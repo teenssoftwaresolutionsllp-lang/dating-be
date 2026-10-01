@@ -643,11 +643,7 @@ async function seed() {
         vibes: ["Deep Talks", "Peaceful", "Creative"],
         bio: "Platform Administrator & Trust & Safety Moderator.",
         relationshipStatus: "Single",
-        city: "Bengaluru",
-        state: "Karnataka",
-        country: "India",
-        latitude: 12.9716,
-        longitude: 77.5946,
+        locationName: "Bengaluru",
       },
       // Aarav Sharma
       {
@@ -663,11 +659,7 @@ async function seed() {
         vibes: ["Adventurous", "Chill", "Deep Talks", "Positive", "Creative"],
         bio: "Software Architect & Weekend trekker. Searching for good conversations, indie music, and great filter coffee ☕",
         relationshipStatus: "Single",
-        city: "Bengaluru",
-        state: "Karnataka",
-        country: "India",
-        latitude: 12.9716,
-        longitude: 77.5946,
+        locationName: "Bengaluru",
       },
       // AMMU (Exact Figma Profile Card: Ammu, 23, 5.6 fts, Lives in Hyderabad)
       {
@@ -683,11 +675,7 @@ async function seed() {
         vibes: ["Caring", "Deep Talks", "Creative", "Positive", "Chill"],
         bio: "Looking for good vibes, genuine conversations, and a real connection. Let's explore cozy cafes and talk about art ✨",
         relationshipStatus: "Single",
-        city: "Hyderabad",
-        state: "Telangana",
-        country: "India",
-        latitude: 17.385,
-        longitude: 78.4867,
+        locationName: "Hyderabad",
       },
       // Ananya Verma
       {
@@ -703,11 +691,7 @@ async function seed() {
         vibes: ["Creative", "Romantic", "Chill", "Positive", "Classy"],
         bio: "UI/UX Designer. Obsessed with indie cinema, matcha lattes, and rooftop sunsets 🌅",
         relationshipStatus: "Single",
-        city: "Bengaluru",
-        state: "Karnataka",
-        country: "India",
-        latitude: 12.9784,
-        longitude: 77.6408,
+        locationName: "Bengaluru",
       },
       // Rohan Mehta
       {
@@ -723,11 +707,7 @@ async function seed() {
         vibes: ["Adventurous", "Fun & Funny", "Chill", "Positive", "Classy"],
         bio: "Product Manager in Fintech. Love marathon running, podcasts, and discovering hidden cocktail bars 🍸",
         relationshipStatus: "Single",
-        city: "Mumbai",
-        state: "Maharashtra",
-        country: "India",
-        latitude: 19.076,
-        longitude: 72.8777,
+        locationName: "Mumbai",
       },
       // Priya Nair
       {
@@ -743,11 +723,7 @@ async function seed() {
         vibes: ["Peaceful", "Caring", "Creative", "Deep Talks", "Chill"],
         bio: "Architectural photographer. Dog mom to a golden retriever named Bruno 🐾",
         relationshipStatus: "Single",
-        city: "Hyderabad",
-        state: "Telangana",
-        country: "India",
-        latitude: 17.4065,
-        longitude: 78.4772,
+        locationName: "Hyderabad",
       },
       // Vikram Rao
       {
@@ -769,11 +745,7 @@ async function seed() {
         ],
         bio: "Data Scientist & AI Researcher. Passionate about guitar, board games, and sci-fi books 🚀",
         relationshipStatus: "Single",
-        city: "Hyderabad",
-        state: "Telangana",
-        country: "India",
-        latitude: 17.4485,
-        longitude: 78.3748,
+        locationName: "Hyderabad",
       },
       // Sneha Kulkarni
       {
@@ -789,11 +761,7 @@ async function seed() {
         vibes: ["Peaceful", "Creative", "Positive", "Caring", "Romantic"],
         bio: "Content strategist & potter. Plant parent and weekend baker 🥐",
         relationshipStatus: "Single",
-        city: "Pune",
-        state: "Maharashtra",
-        country: "India",
-        latitude: 18.5204,
-        longitude: 73.8567,
+        locationName: "Pune",
       },
       // Karthik Iyer
       {
@@ -809,11 +777,7 @@ async function seed() {
         vibes: ["Classy", "Deep Talks", "Romantic", "Peaceful", "Positive"],
         bio: "Investment Banker & Amateur Chef. Love classical fusion music, tennis, and culinary adventures 🍷",
         relationshipStatus: "Single",
-        city: "Chennai",
-        state: "Tamil Nadu",
-        country: "India",
-        latitude: 13.0827,
-        longitude: 80.2707,
+        locationName: "Chennai",
       },
       // Diya Kapoor
       {
@@ -829,16 +793,27 @@ async function seed() {
         vibes: ["Adventurous", "Fun & Funny", "Classy", "Positive", "Chill"],
         bio: "Fashion Stylist & Travel Enthusiast. Always planning my next trip to the mountains 🏔️",
         relationshipStatus: "Single",
-        city: "Delhi",
-        state: "Delhi",
-        country: "India",
-        latitude: 28.6139,
-        longitude: 77.209,
+        locationName: "Delhi",
       },
     ];
 
-    for (const p of profileData) {
-      await db.insert(profiles).values(p).onConflictDoNothing();
+    const seededLocations = await db
+      .select({ id: locations.id, name: locations.name })
+      .from(locations)
+      .where(eq(locations.isSeeded, true));
+    const locationIdsByName = new Map(
+      seededLocations.map((location) => [location.name, location.id]),
+    );
+
+    for (const { locationName, ...profile } of profileData) {
+      const locationId = locationIdsByName.get(locationName);
+      if (!locationId) {
+        throw new Error(`Seeded location not found: ${locationName}`);
+      }
+      await db
+        .insert(profiles)
+        .values({ ...profile, locationId })
+        .onConflictDoNothing();
     }
 
     const allDbProfiles = await db.select().from(profiles);

@@ -252,11 +252,6 @@ class LocationService {
       .update(profiles)
       .set({
         locationId: location.id,
-        city: location.city ?? profile.city,
-        state: location.state ?? profile.state,
-        country: location.country ?? profile.country,
-        latitude: location.latitude ?? profile.latitude,
-        longitude: location.longitude ?? profile.longitude,
         locationUpdatedAt: new Date(),
         updatedAt: new Date(),
       })
@@ -542,11 +537,6 @@ class LocationService {
       .update(profiles)
       .set({
         locationId: location.id,
-        city: normalized.city ?? location.city ?? profile.city,
-        state: normalized.state ?? location.state ?? profile.state,
-        country: normalized.country ?? location.country ?? profile.country,
-        latitude: normalized.latitude,
-        longitude: normalized.longitude,
         locationUpdatedAt: new Date(),
         updatedAt: new Date(),
       })

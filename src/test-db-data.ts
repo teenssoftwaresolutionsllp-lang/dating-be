@@ -10,7 +10,7 @@ async function inspectDb() {
 
   const allProfiles = await db.select().from(profiles).limit(10);
   console.log("=== PROFILES IN DB ===");
-  console.log(JSON.stringify(allProfiles.map(p => ({ id: p.id, userId: p.userId, name: p.name, religion: p.religion, city: p.city, gender: p.gender })), null, 2));
+  console.log(JSON.stringify(allProfiles.map(p => ({ id: p.id, userId: p.userId, name: p.name, religion: p.religion, locationId: p.locationId, gender: p.gender })), null, 2));
 
   const allPhotos = await db.select().from(profilePhotos).limit(10);
   console.log("=== PROFILE PHOTOS IN DB ===");

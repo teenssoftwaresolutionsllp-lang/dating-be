@@ -272,11 +272,7 @@ class ProfileService {
 
     const nextStep = this.getNextStep(mergedProfile, status.onboardingStep);
 
-    return ProfileRepository.saveProfileAndStep(
-      userId,
-      values,
-      nextStep,
-    );
+    return ProfileRepository.saveProfileAndStep(userId, values, nextStep);
   }
 
   async getLanguages(): Promise<Language[]> {

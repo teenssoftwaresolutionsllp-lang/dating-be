@@ -1077,7 +1077,9 @@ export class MatchService {
         Math.cos(radians(viewer.latitude)) *
           Math.cos(radians(latitude)) *
           Math.sin(longitudeDelta / 2) ** 2;
-      return 6371 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+      return (
+        6371 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine))
+      );
     };
 
     const eligibleCandidates = candidateUsers.filter((candidate) => {
@@ -1093,7 +1095,9 @@ export class MatchService {
       if (
         religionPreferences.length > 0 &&
         (!candidate.religion ||
-          !religionPreferences.includes(candidate.religion.trim().toLowerCase()))
+          !religionPreferences.includes(
+            candidate.religion.trim().toLowerCase(),
+          ))
       ) {
         return false;
       }
@@ -1173,15 +1177,13 @@ export class MatchService {
       const sharedInterestIds = interestIds.filter((interestId) =>
         relevantInterestIds.has(interestId),
       );
-      const distanceKm = getDistanceKm(
-        candidate.latitude,
-        candidate.longitude,
-      );
+      const distanceKm = getDistanceKm(candidate.latitude, candidate.longitude);
       const scoreParts: Array<{ score: number; weight: number }> = [];
 
-      const scoreInterestIds = preferredInterestIds.size > 0
-        ? preferredInterestIds
-        : viewerInterestIds;
+      const scoreInterestIds =
+        preferredInterestIds.size > 0
+          ? preferredInterestIds
+          : viewerInterestIds;
       if (scoreInterestIds.size > 0) {
         const matchedCount = interestIds.filter((interestId) =>
           scoreInterestIds.has(interestId),
@@ -1209,7 +1211,10 @@ export class MatchService {
           weight: 25,
         });
       }
-      const totalWeight = scoreParts.reduce((total, part) => total + part.weight, 0);
+      const totalWeight = scoreParts.reduce(
+        (total, part) => total + part.weight,
+        0,
+      );
       const matchPercentage = totalWeight
         ? Math.round(
             (scoreParts.reduce(
@@ -1252,8 +1257,12 @@ export class MatchService {
       };
     });
 
-    const rankByLastActive = (left: (typeof formattedCandidates)[number], right: (typeof formattedCandidates)[number]) =>
-      (right.lastActiveAt?.getTime() ?? 0) - (left.lastActiveAt?.getTime() ?? 0);
+    const rankByLastActive = (
+      left: (typeof formattedCandidates)[number],
+      right: (typeof formattedCandidates)[number],
+    ) =>
+      (right.lastActiveAt?.getTime() ?? 0) -
+      (left.lastActiveAt?.getTime() ?? 0);
     const active = formattedCandidates
       .filter((candidate) => candidate.isOnline)
       .sort(rankByLastActive)

@@ -13,6 +13,7 @@ import {
   swipeEvents,
   matches,
   locations,
+  datingPreferences,
   conversations,
   conversationMembers,
   blocks,
@@ -940,10 +941,10 @@ export class MatchService {
       return {
         userId: s.targetUserId,
         name: prof?.name || "Liked User",
-        age: calculateAge(prof?.dateOfBirth) || 23,
-        city: prof?.city || "Hyderabad",
-        location: prof?.city ? `Lives in ${prof.city}` : "Lives in Hyderabad",
-        profession: edu?.profession || "Designer",
+        age: calculateAge(prof?.dateOfBirth),
+        city: prof?.city || null,
+        location: prof?.city ? `Lives in ${prof.city}` : null,
+        profession: edu?.profession || edu?.occupation || null,
         photo: photo?.url || null,
         action: s.action,
         likedAt: s.createdAt,
@@ -958,25 +959,60 @@ export class MatchService {
    * 10. GET PEOPLE CATEGORIES (For People tab with 6 real sections)
    */
   static async getPeopleCategories({ userId }: { userId: string }) {
-    // Exclude blocked users and current user
-    const userBlocks = await db
+    const [viewer] = await db
       .select({
-        blockedUserId: blocks.blockedUserId,
-        userId: blocks.userId,
+        profileId: profiles.id,
+        religion: profiles.religion,
+        latitude: locations.latitude,
+        longitude: locations.longitude,
       })
+      .from(profiles)
+      .leftJoin(locations, eq(profiles.locationId, locations.id))
+      .where(eq(profiles.userId, userId));
+
+    const [preferences] = await db
+      .select()
+      .from(datingPreferences)
+      .where(eq(datingPreferences.userId, userId));
+
+    const userBlocks = await db
+      .select({ blockedUserId: blocks.blockedUserId, userId: blocks.userId })
       .from(blocks)
       .where(or(eq(blocks.userId, userId), eq(blocks.blockedUserId, userId)));
     const blockedUserIds = userBlocks.map((b) =>
       b.userId === userId ? b.blockedUserId : b.userId,
     );
-    const excludedIds = Array.from(new Set([userId, ...blockedUserIds]));
+    const previousSwipes = await db
+      .select({ targetUserId: swipes.targetUserId })
+      .from(swipes)
+      .where(and(eq(swipes.userId, userId), eq(swipes.action, "dislike")));
+    const excludedIds = Array.from(
+      new Set([
+        userId,
+        ...blockedUserIds,
+        ...previousSwipes.map((swipe) => swipe.targetUserId),
+      ]),
+    );
 
     const candidateUsers = await db
       .select({
         id: users.id,
         lastActiveAt: users.lastActiveAt,
+        profileId: profiles.id,
+        name: profiles.name,
+        dateOfBirth: profiles.dateOfBirth,
+        gender: profiles.gender,
+        religion: profiles.religion,
+        city: locations.city,
+        locationName: locations.name,
+        latitude: locations.latitude,
+        longitude: locations.longitude,
+        isVerified: sql<boolean>`coalesce(${kycVerifications.status} = 'verified', false)`,
       })
       .from(users)
+      .innerJoin(profiles, eq(profiles.userId, users.id))
+      .leftJoin(locations, eq(profiles.locationId, locations.id))
+      .leftJoin(kycVerifications, eq(kycVerifications.userId, users.id))
       .where(
         and(
           eq(users.status, "active"),
@@ -986,10 +1022,85 @@ export class MatchService {
         ),
       )
       .orderBy(desc(users.lastActiveAt))
-      .limit(30);
+      .limit(500);
 
-    const candidateIds = candidateUsers.map((u) => u.id);
-    if (candidateIds.length === 0) {
+    const [viewerInterestRecord] = viewer
+      ? await db
+          .select({ interestIds: profileInterests.interestIds })
+          .from(profileInterests)
+          .where(eq(profileInterests.profileId, viewer.profileId))
+      : [];
+    const viewerInterestIds = new Set(viewerInterestRecord?.interestIds ?? []);
+    const preferredInterestIds = new Set(
+      preferences?.preferredInterestIds ?? [],
+    );
+    const relevantInterestIds = new Set([
+      ...viewerInterestIds,
+      ...preferredInterestIds,
+    ]);
+
+    const minAge = preferences?.minAge ?? 18;
+    const maxAge = preferences?.maxAge ?? 60;
+    const maxDistanceKm = preferences?.maxDistanceKm ?? 50;
+    const preferredGenders = new Set(
+      (preferences?.preferredGenders ?? []).map((gender) =>
+        gender.trim().toLowerCase(),
+      ),
+    );
+    const religionPreferences = (preferences?.religionPreferences ?? [])
+      .map((religion) => religion.trim().toLowerCase())
+      .filter(
+        (religion) =>
+          religion.length > 0 &&
+          religion !== "open to all" &&
+          religion !== "any" &&
+          religion !== "no preference",
+      );
+
+    const getDistanceKm = (
+      latitude: number | null,
+      longitude: number | null,
+    ): number | null => {
+      if (
+        viewer?.latitude == null ||
+        viewer.longitude == null ||
+        latitude == null ||
+        longitude == null
+      ) {
+        return null;
+      }
+      const radians = (degrees: number) => (degrees * Math.PI) / 180;
+      const latitudeDelta = radians(latitude - viewer.latitude);
+      const longitudeDelta = radians(longitude - viewer.longitude);
+      const haversine =
+        Math.sin(latitudeDelta / 2) ** 2 +
+        Math.cos(radians(viewer.latitude)) *
+          Math.cos(radians(latitude)) *
+          Math.sin(longitudeDelta / 2) ** 2;
+      return 6371 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+    };
+
+    const eligibleCandidates = candidateUsers.filter((candidate) => {
+      const age = calculateAge(candidate.dateOfBirth);
+      if (age === null || age < minAge || age > maxAge) return false;
+      if (
+        preferredGenders.size > 0 &&
+        !preferredGenders.has(candidate.gender.trim().toLowerCase())
+      ) {
+        return false;
+      }
+      if (preferences?.verifiedOnly && !candidate.isVerified) return false;
+      if (
+        religionPreferences.length > 0 &&
+        (!candidate.religion ||
+          !religionPreferences.includes(candidate.religion.trim().toLowerCase()))
+      ) {
+        return false;
+      }
+      return true;
+    });
+
+    if (eligibleCandidates.length === 0) {
       return {
         active: [],
         nearYou: [],
@@ -1000,11 +1111,24 @@ export class MatchService {
       };
     }
 
-    const candidateProfiles = await db
-      .select({ ...getTableColumns(profiles), city: locations.city })
-      .from(profiles)
-      .leftJoin(locations, eq(profiles.locationId, locations.id))
-      .where(inArray(profiles.userId, candidateIds));
+    const candidateIds = eligibleCandidates.map((candidate) => candidate.id);
+    const candidateProfileIds = eligibleCandidates.map(
+      (candidate) => candidate.profileId,
+    );
+
+    const candidateInterestRecords = await db
+      .select({
+        profileId: profileInterests.profileId,
+        interestIds: profileInterests.interestIds,
+      })
+      .from(profileInterests)
+      .where(inArray(profileInterests.profileId, candidateProfileIds));
+    const interestNames = await db
+      .select({ id: interests.id, name: interests.name })
+      .from(interests);
+    const interestNameById = new Map(
+      interestNames.map((interest) => [interest.id, interest.name]),
+    );
 
     const candidatePhotos = await db
       .select({
@@ -1014,36 +1138,24 @@ export class MatchService {
         isPrimary: profilePhotos.isPrimary,
       })
       .from(profilePhotos)
-      .where(inArray(profilePhotos.userId, candidateIds));
+      .where(inArray(profilePhotos.userId, candidateIds))
+      .orderBy(desc(profilePhotos.isPrimary), profilePhotos.displayOrder);
 
     const candidateEdu = await db
       .select()
       .from(education)
       .where(inArray(education.userId, candidateIds));
 
-    const profileIds = candidateProfiles.map((p) => p.id);
-    const candidateInterests =
-      profileIds.length > 0
-        ? await db
-            .select({
-              profileId: profileInterests.profileId,
-              interestName: interests.name,
-            })
-            .from(profileInterests)
-            .innerJoin(
-              interests,
-              sql`${interests.id} = ANY(${profileInterests.interestIds})`,
-            )
-            .where(inArray(profileInterests.profileId, profileIds))
-        : [];
+    const interestsByProfileId = new Map(
+      candidateInterestRecords.map((record) => [
+        record.profileId,
+        record.interestIds,
+      ]),
+    );
 
-    const formatTimeAgo = (
-      date: Date | null | undefined,
-      idx: number,
-    ): string => {
-      if (!date) return `${10 + (idx % 20)} min ago`;
-      const diffMs = Date.now() - new Date(date).getTime();
-      const diffMins = Math.floor(diffMs / 60000);
+    const formatTimeAgo = (date: Date | null): string => {
+      if (!date) return "";
+      const diffMins = Math.floor((Date.now() - date.getTime()) / 60000);
       if (diffMins < 1) return "Just now";
       if (diffMins < 60) return `${diffMins} min ago`;
       const diffHours = Math.floor(diffMins / 60);
@@ -1051,49 +1163,157 @@ export class MatchService {
       return `${Math.floor(diffHours / 24)} days ago`;
     };
 
-    const formattedCandidates = candidateUsers.map((u, index) => {
-      const prof = candidateProfiles.find((p) => p.userId === u.id);
-      const edu = candidateEdu.find((e) => e.userId === u.id);
+    const formattedCandidates = eligibleCandidates.map((candidate) => {
+      const edu = candidateEdu.find((record) => record.userId === candidate.id);
       const userPhoto =
-        candidatePhotos.find((p) => p.userId === u.id && p.isPrimary) ||
-        candidatePhotos.find((p) => p.userId === u.id);
-      const userInterests = prof
-        ? candidateInterests
-            .filter((i) => i.profileId === prof.id)
-            .map((i) => i.interestName)
-        : [];
+        candidatePhotos.find(
+          (photo) => photo.userId === candidate.id && photo.isPrimary,
+        ) || candidatePhotos.find((photo) => photo.userId === candidate.id);
+      const interestIds = interestsByProfileId.get(candidate.profileId) ?? [];
+      const sharedInterestIds = interestIds.filter((interestId) =>
+        relevantInterestIds.has(interestId),
+      );
+      const distanceKm = getDistanceKm(
+        candidate.latitude,
+        candidate.longitude,
+      );
+      const scoreParts: Array<{ score: number; weight: number }> = [];
 
-      const isOnline = u.lastActiveAt
-        ? Date.now() - new Date(u.lastActiveAt).getTime() < 30 * 60 * 1000
-        : true;
+      const scoreInterestIds = preferredInterestIds.size > 0
+        ? preferredInterestIds
+        : viewerInterestIds;
+      if (scoreInterestIds.size > 0) {
+        const matchedCount = interestIds.filter((interestId) =>
+          scoreInterestIds.has(interestId),
+        ).length;
+        scoreParts.push({
+          score: matchedCount / scoreInterestIds.size,
+          weight: 50,
+        });
+      }
+      if (religionPreferences.length > 0) {
+        scoreParts.push({ score: 1, weight: 25 });
+      } else if (viewer?.religion) {
+        scoreParts.push({
+          score:
+            candidate.religion?.trim().toLowerCase() ===
+            viewer.religion.trim().toLowerCase()
+              ? 1
+              : 0,
+          weight: 25,
+        });
+      }
+      if (distanceKm !== null) {
+        scoreParts.push({
+          score: Math.max(0, 1 - distanceKm / maxDistanceKm),
+          weight: 25,
+        });
+      }
+      const totalWeight = scoreParts.reduce((total, part) => total + part.weight, 0);
+      const matchPercentage = totalWeight
+        ? Math.round(
+            (scoreParts.reduce(
+              (total, part) => total + part.score * part.weight,
+              0,
+            ) /
+              totalWeight) *
+              100,
+          )
+        : 0;
+
+      const age = calculateAge(candidate.dateOfBirth) ?? 0;
+      const timeSinceActive = candidate.lastActiveAt
+        ? Date.now() - new Date(candidate.lastActiveAt).getTime()
+        : Number.POSITIVE_INFINITY;
+      const isOnline = timeSinceActive < 30 * 60 * 1000;
 
       return {
-        id: u.id,
-        userId: u.id,
-        name: prof?.name || "Member",
-        age: calculateAge(prof?.dateOfBirth) || 23,
-        location: prof?.city || "Hyderabad",
-        city: prof?.city || "Hyderabad",
-        religion: prof?.religion || "Hindu",
-        profession: edu?.profession || "Designer",
-        distance: `${(2.0 + (index % 6) * 0.7).toFixed(1)} Km`,
-        matchPercentage: Math.max(75, 95 - (index % 5) * 5),
-        interest:
-          userInterests[0] ||
-          (index % 3 === 0 ? "Music" : index % 3 === 1 ? "Movie" : "Travel"),
-        timeAgo: formatTimeAgo(u.lastActiveAt, index),
+        id: candidate.id,
+        userId: candidate.id,
+        profileId: candidate.profileId,
+        age,
+        name: candidate.name,
+        city: candidate.city ?? candidate.locationName ?? "",
+        location: candidate.city ?? candidate.locationName ?? "",
+        religion: candidate.religion ?? "",
+        profession: edu?.profession ?? edu?.occupation ?? "",
+        distanceKm,
+        distance: distanceKm === null ? "" : `${distanceKm.toFixed(1)} Km`,
+        matchPercentage,
+        interest: sharedInterestIds
+          .map((interestId) => interestNameById.get(interestId))
+          .filter((name): name is string => Boolean(name))
+          .join(", "),
+        timeAgo: formatTimeAgo(candidate.lastActiveAt),
         isOnline,
         image: userPhoto?.url || null,
+        lastActiveAt: candidate.lastActiveAt,
+        sharedInterestCount: sharedInterestIds.length,
       };
     });
 
+    const rankByLastActive = (left: (typeof formattedCandidates)[number], right: (typeof formattedCandidates)[number]) =>
+      (right.lastActiveAt?.getTime() ?? 0) - (left.lastActiveAt?.getTime() ?? 0);
+    const active = formattedCandidates
+      .filter((candidate) => candidate.isOnline)
+      .sort(rankByLastActive)
+      .slice(0, 30);
+    const nearYou = formattedCandidates
+      .filter(
+        (candidate) =>
+          candidate.distanceKm !== null &&
+          candidate.distanceKm <= maxDistanceKm,
+      )
+      .sort((left, right) => left.distanceKm! - right.distanceKm!)
+      .slice(0, 30);
+    const youMayLike = [...formattedCandidates]
+      .sort(
+        (left, right) =>
+          right.matchPercentage - left.matchPercentage ||
+          rankByLastActive(left, right),
+      )
+      .slice(0, 30);
+    const similarInterest = formattedCandidates
+      .filter((candidate) => candidate.sharedInterestCount > 0)
+      .sort(
+        (left, right) =>
+          right.sharedInterestCount - left.sharedInterestCount ||
+          rankByLastActive(left, right),
+      )
+      .slice(0, 30);
+    const sameReligion = viewer?.religion
+      ? formattedCandidates
+          .filter(
+            (candidate) =>
+              candidate.religion.trim().toLowerCase() ===
+              viewer.religion!.trim().toLowerCase(),
+          )
+          .sort(rankByLastActive)
+          .slice(0, 30)
+      : [];
+    const recentlyActive = formattedCandidates
+      .filter(
+        (candidate) =>
+          candidate.lastActiveAt !== null &&
+          Date.now() - candidate.lastActiveAt.getTime() <= 24 * 60 * 60 * 1000,
+      )
+      .sort(rankByLastActive)
+      .slice(0, 30);
+
+    const toCategoryUser = ({
+      lastActiveAt: _lastActiveAt,
+      sharedInterestCount: _sharedInterestCount,
+      distanceKm: _distanceKm,
+      ...candidate
+    }: (typeof formattedCandidates)[number]) => candidate;
+
     return {
-      active: formattedCandidates,
-      nearYou: formattedCandidates,
-      youMayLike: formattedCandidates,
-      similarInterest: formattedCandidates,
-      sameReligion: formattedCandidates,
-      recentlyActive: formattedCandidates,
+      active: active.map(toCategoryUser),
+      nearYou: nearYou.map(toCategoryUser),
+      youMayLike: youMayLike.map(toCategoryUser),
+      similarInterest: similarInterest.map(toCategoryUser),
+      sameReligion: sameReligion.map(toCategoryUser),
+      recentlyActive: recentlyActive.map(toCategoryUser),
     };
   }
 

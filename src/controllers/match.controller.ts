@@ -2,45 +2,12 @@ import type { Request, Response } from "express";
 import MatchService from "../services/match.service";
 import ApiResponse from "../utils/response";
 import type { SwipeDirection } from "../types/index";
-import { db } from "../db/index";
-import { users } from "../db/schema";
-import { eq } from "drizzle-orm";
 
 /**
- * Helper: Resolve current user ID from token, header, query, body, or fallback test user
+ * Resolve the current user ID from the authenticated request context.
  */
 async function resolveUserId(req: Request): Promise<string | null> {
-  // 1. From authenticated req.user
-  if (req.user?.id) {
-    return req.user.id;
-  }
-
-  // 2. From x-user-id header
-  const headerUserId = req.headers["x-user-id"] as string | undefined;
-  if (headerUserId) {
-    return headerUserId;
-  }
-
-  // 3. From query param (?userId=...)
-  const queryUserId = req.query.userId as string | undefined;
-  if (queryUserId) {
-    return queryUserId;
-  }
-
-  // 4. From body (userId: ...)
-  const bodyUserId = (req.body as { userId?: string })?.userId;
-  if (bodyUserId) {
-    return bodyUserId;
-  }
-
-  // 5. Fallback to first active user in database
-  const [defaultUser] = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.status, "active"))
-    .limit(1);
-
-  return defaultUser?.id || null;
+  return req.user?.id ?? null;
 }
 
 export class MatchController {

@@ -28,6 +28,9 @@ import {
   sql,
   inArray,
   getTableColumns,
+  exists,
+  isNull,
+  ne,
 } from "drizzle-orm";
 import type { AppError, SwipeDirection } from "../types/index";
 import {
@@ -39,7 +42,7 @@ import {
 
 export interface DiscoveryCard {
   userId: string;
-  name: string;
+  name: string | null;
   age: number | null;
   heightCm: number | null;
   heightFt: string | null;
@@ -112,7 +115,7 @@ export interface MatchListItem {
 export class MatchService {
   /**
    * 1. GET DISCOVERY FEED
-   * Returns candidate cards (Ammu, 23, 5.6 fts, Trust Score %, education, languages, photos)
+   * Returns eligible profiles with approved photos and available profile details.
    */
   static async getDiscoveryFeed({
     userId,
@@ -165,6 +168,20 @@ export class MatchService {
           excludedIds.length > 0
             ? notInArray(users.id, excludedIds)
             : undefined,
+          exists(
+            db
+              .select({ id: profilePhotos.id })
+              .from(profilePhotos)
+              .innerJoin(profiles, eq(profilePhotos.userId, profiles.userId))
+              .where(
+                and(
+                  eq(profiles.userId, users.id),
+                  ne(profilePhotos.moderationStatus, "rejected"),
+                  ne(profilePhotos.verificationStatus, "rejected"),
+                  isNull(profilePhotos.deletedAt),
+                ),
+              ),
+          ),
         ),
       )
       .orderBy(desc(users.lastActiveAt))
@@ -195,8 +212,15 @@ export class MatchService {
         displayOrder: profilePhotos.displayOrder,
       })
       .from(profilePhotos)
-      .where(inArray(profilePhotos.userId, candidateIds))
-      .orderBy(profilePhotos.displayOrder);
+      .where(
+        and(
+          inArray(profilePhotos.userId, candidateIds),
+          ne(profilePhotos.moderationStatus, "rejected"),
+          ne(profilePhotos.verificationStatus, "rejected"),
+          isNull(profilePhotos.deletedAt),
+        ),
+      )
+      .orderBy(desc(profilePhotos.isPrimary), profilePhotos.displayOrder);
 
     // 6. Fetch Education
     const candidateEdu = await db
@@ -290,7 +314,7 @@ export class MatchService {
 
       return {
         userId: u.id,
-        name: prof?.name || "Discovery User",
+        name: prof?.name || null,
         age: calculateAge(prof?.dateOfBirth),
         heightCm: prof?.heightCm || null,
         heightFt: formatHeightToFeet(prof?.heightCm),
@@ -298,22 +322,12 @@ export class MatchService {
         location: prof?.city ? `Lives in ${prof.city}` : null,
         city: prof?.city || null,
         religion: prof?.religion || null,
-        foodPreference: prof?.foodPreference || "Foodie / Veg",
-        drinking: prof?.drinking || "Socially",
-        smoking: prof?.smoking || "No",
-        vibes:
-          prof?.vibes && prof.vibes.length > 0
-            ? prof.vibes
-            : ["Caring", "Fun & Funny", "Peaceful", "Deep Talks", "Positive"],
-        nature:
-          prof?.vibes && prof.vibes.length > 0
-            ? prof.vibes
-            : ["Caring", "Fun & Funny", "Peaceful", "Deep Talks", "Positive"],
-        lookingFor: [
-          prof?.relationshipStatus
-            ? `${prof.relationshipStatus}`
-            : "Long-term relationship",
-        ],
+        foodPreference: prof?.foodPreference || null,
+        drinking: prof?.drinking || null,
+        smoking: prof?.smoking || null,
+        vibes: prof?.vibes || [],
+        nature: prof?.vibes || [],
+        lookingFor: [],
         bio: prof?.bio || null,
         relationshipStatus: prof?.relationshipStatus || null,
         trustScore,
@@ -333,10 +347,7 @@ export class MatchService {
             }
           : null,
         languages: userLangs,
-        interests:
-          userInterests.length > 0
-            ? userInterests
-            : ["Music", "Movies", "Travel"],
+        interests: userInterests,
       };
     });
 

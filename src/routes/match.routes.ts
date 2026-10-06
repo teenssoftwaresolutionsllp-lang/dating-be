@@ -1,8 +1,11 @@
 import { Router } from "express";
 import MatchController from "../controllers/match.controller";
+import { authenticate } from "../middleware/auth.middleware";
 import { asyncHandler } from "../middleware/error.middleware";
 
 const router = Router();
+
+router.use(authenticate);
 
 // =================================================================
 // Discovery Feed (Explore / People tab cards)

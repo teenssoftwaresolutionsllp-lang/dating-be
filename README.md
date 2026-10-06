@@ -546,6 +546,13 @@ Drops the entire public schema and recreates it cleanly for a fresh start:
 npm run db:reset
 ```
 
+### Pre-match chat
+
+Each person may send up to two text messages before a match. The recipient can
+choose **Like & match** after receiving a message; this records their like,
+activates the match, and unlocks unlimited messaging for both people. Pending
+pre-match conversations and message limits are enforced by the backend.
+
 ---
 
 ## 20. Security Considerations

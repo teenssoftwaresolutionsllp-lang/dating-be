@@ -39,7 +39,7 @@ export class MessageController {
       });
     }
 
-    const message = await MessageService.sendMessage({
+    const result = await MessageService.sendMessage({
       senderId,
       receiverId,
       content,
@@ -49,7 +49,7 @@ export class MessageController {
     return ApiResponse.success(res, {
       statusCode: 201,
       message: "Message sent successfully",
-      data: { message },
+      data: result,
     });
   }
 
@@ -90,13 +90,50 @@ export class MessageController {
     return ApiResponse.success(res, {
       statusCode: 200,
       message: "Conversation retrieved successfully",
-      data: result.items,
+      data: {
+        items: result.items,
+        isMatched: result.isMatched,
+        messagesRemaining: result.messagesRemaining,
+      },
       meta: {
         total: result.total,
         page: result.page,
         limit: result.limit,
         totalPages: result.totalPages,
       },
+    });
+  }
+
+  /**
+   * POST /api/v1/messages/:userId/like
+   * Like a person who has sent a pre-match message and unlock the match.
+   */
+  static async likeConversation(
+    req: Request,
+    res: Response,
+  ): Promise<Response> {
+    const userId = req.user?.id;
+    const partnerId = String(req.params.userId);
+    if (!userId) {
+      return ApiResponse.error(res, {
+        statusCode: 401,
+        message: "Unauthorized",
+        code: "UNAUTHORIZED",
+      });
+    }
+    if (!partnerId || partnerId === "undefined") {
+      return ApiResponse.error(res, {
+        statusCode: 400,
+        message: "Invalid user ID",
+        code: "VALIDATION_ERROR",
+      });
+    }
+
+    await MessageService.likeFromConversation(userId, partnerId);
+    return ApiResponse.success(res, {
+      statusCode: 200,
+      message: "You matched! Unlimited messaging is now available.",
+      data: { isMatched: true },
     });
   }
 

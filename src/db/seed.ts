@@ -1,6 +1,6 @@
 import "dotenv/config";
 import bcrypt from "bcryptjs";
-import { eq, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { db, pool } from "./index";
 import {
   languages,
@@ -1013,7 +1013,7 @@ async function seed() {
       await db.insert(kycVerifications).values(kyc).onConflictDoNothing();
     }
 
-    // 3. Profile Photos (High quality Unsplash portrait photography)
+    // 3. Seeded placeholder photos stay unapproved and are excluded from discovery.
     const photosData = [
       // Ammu (Figma Screen main portrait + gallery)
       {
@@ -1150,6 +1150,15 @@ async function seed() {
     for (const photo of photosData) {
       await db.insert(profilePhotos).values(photo).onConflictDoNothing();
     }
+    await db
+      .update(profilePhotos)
+      .set({ verificationStatus: "pending", moderationStatus: "pending" })
+      .where(
+        inArray(
+          profilePhotos.storageKey,
+          photosData.map((photo) => photo.storageKey),
+        ),
+      );
 
     // 4. Media Assets (Central Media Repository: Photos, Audio Intros, Clips)
     const mediaData = [

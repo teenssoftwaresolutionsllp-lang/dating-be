@@ -2,6 +2,7 @@ import "dotenv/config";
 import { db } from "./db/index";
 import { users, profiles } from "./db/schema";
 import { eq } from "drizzle-orm";
+import { generateTokens } from "./utils/jwt";
 
 async function testUpdate() {
   // 1. Get first active user
@@ -25,7 +26,7 @@ async function testUpdate() {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          "x-user-id": user.id,
+          Authorization: `Bearer ${generateTokens(user).accessToken}`,
         },
         body: JSON.stringify({
           name: "Test Bunny",

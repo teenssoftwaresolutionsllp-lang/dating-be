@@ -2,7 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { verifyAccessToken } from "../utils/jwt";
 import { db } from "../db/index";
 import { users } from "../db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import ApiResponse from "../utils/response";
 import type { TokenPayload, SafeUser } from "../types/index";
 
@@ -33,9 +33,7 @@ const toSafeUser = (user: {
 });
 
 /**
- * Authenticate JWT Access Token
- * Production: Strictly enforces JWT Bearer Token.
- * Development / Test: Allows testing with JWT OR Dev-header / Seeded User fallback.
+ * Authenticate JWT access tokens in every environment.
  */
 export const authenticate = async (
   req: Request,
@@ -44,9 +42,6 @@ export const authenticate = async (
 ) => {
   try {
     const authHeader = req.headers.authorization;
-    const isDev = process.env.NODE_ENV !== "production";
-
-    // 1. STANDARD PRODUCTION JWT AUTHENTICATION
     if (authHeader && authHeader.startsWith("Bearer ")) {
       const token = authHeader.split(" ")[1];
 
@@ -98,70 +93,9 @@ export const authenticate = async (
       return next();
     }
 
-    // 2. DEVELOPMENT-ONLY CONVENIENCE FALLBACK (For rapid local testing)
-    if (isDev) {
-      // Check if developer specified a user ID via header
-      const devUserId = req.headers["x-user-id"] as string | undefined;
-      const isValidUuid = Boolean(
-        devUserId &&
-          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-            devUserId
-          )
-      );
-
-      let devUser;
-      if (isValidUuid && devUserId) {
-        [devUser] = await db
-          .select({
-            id: users.id,
-            email: users.email,
-            phone: users.phone,
-            role: users.role,
-            status: users.status,
-            emailVerified: users.emailVerified,
-            phoneVerified: users.phoneVerified,
-            authProvider: users.authProvider,
-            lastLoginAt: users.lastLoginAt,
-            lastActiveAt: users.lastActiveAt,
-            createdAt: users.createdAt,
-            updatedAt: users.updatedAt,
-          })
-          .from(users)
-          .where(and(eq(users.id, devUserId), eq(users.status, "active")));
-      }
-
-      if (!devUser) {
-        // Fallback to the first active user in database for instant 1-click testing
-        [devUser] = await db
-          .select({
-            id: users.id,
-            email: users.email,
-            phone: users.phone,
-            role: users.role,
-            status: users.status,
-            emailVerified: users.emailVerified,
-            phoneVerified: users.phoneVerified,
-            authProvider: users.authProvider,
-            lastLoginAt: users.lastLoginAt,
-            lastActiveAt: users.lastActiveAt,
-            createdAt: users.createdAt,
-            updatedAt: users.updatedAt,
-          })
-          .from(users)
-          .where(eq(users.status, "active"))
-          .limit(1);
-      }
-
-      if (devUser) {
-        req.user = toSafeUser(devUser);
-        return next();
-      }
-    }
-
-    // 3. UNAUTHORIZED IF NO TOKEN IN PRODUCTION OR NO DEV USER FOUND
     return ApiResponse.error(res, {
       statusCode: 401,
-      message: "Authorization token required (Bearer <token>)",
+      message: "Authorization token required",
       code: "UNAUTHORIZED",
     });
   } catch (error: unknown) {

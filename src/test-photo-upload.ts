@@ -2,6 +2,7 @@ import "dotenv/config";
 import { db, pool } from "./db/index";
 import { users, profilePhotos } from "./db/schema";
 import { eq } from "drizzle-orm";
+import { generateTokens } from "./utils/jwt";
 
 async function testPhotoUpload() {
   const [user] = await db.select().from(users).where(eq(users.status, "active")).limit(1);
@@ -26,7 +27,7 @@ async function testPhotoUpload() {
   const res = await fetch("http://localhost:5000/api/v1/profile/photos", {
     method: "POST",
     headers: {
-      "x-user-id": user.id,
+      Authorization: `Bearer ${generateTokens(user).accessToken}`,
     },
     body: form,
   });

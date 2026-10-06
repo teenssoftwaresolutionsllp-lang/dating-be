@@ -254,14 +254,27 @@ export interface SendMessageParams {
 
 export interface MessageRecord {
   id: string;
+  conversationId: string;
   senderId: string;
   receiverId: string;
   content: string;
   messageType: string;
   isRead: boolean;
+  isOwn: boolean;
   isDeleted: boolean;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface SendMessageResult {
+  message: MessageRecord;
+  isMatched: boolean;
+  messagesRemaining: number | null;
+}
+
+export interface ConversationHistory extends PaginatedResult<MessageRecord> {
+  isMatched: boolean;
+  messagesRemaining: number | null;
 }
 
 export interface GetConversationParams {
@@ -272,11 +285,25 @@ export interface GetConversationParams {
 }
 
 export interface ConversationSummary {
-  userId: string;
-  displayName?: string | null;
-  lastMessage?: string;
-  lastMessageAt?: Date;
+  conversationId: string;
+  partner: {
+    id: string;
+    name: string;
+    primaryPhoto: string | null;
+    isOnline: boolean;
+  };
+  lastMessage: {
+    id: string;
+    content: string | null;
+    senderId: string;
+    messageType: string;
+    createdAt: Date;
+    isOwnMessage: boolean;
+  } | null;
   unreadCount: number;
+  lastActivityAt: Date;
+  isMatched: boolean;
+  messagesRemaining: number | null;
 }
 
 export interface DeleteMessageParams {

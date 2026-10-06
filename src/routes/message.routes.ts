@@ -8,6 +8,7 @@ const router = Router();
 router.use(authenticate);
 router.post("/", asyncHandler(MessageController.sendMessage));
 router.get("/", asyncHandler(MessageController.getConversations));
+router.post("/:userId/like", asyncHandler(MessageController.likeConversation));
 router.get("/:userId", asyncHandler(MessageController.getConversation));
 router.delete("/:messageId", asyncHandler(MessageController.deleteMessage));
 

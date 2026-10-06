@@ -128,9 +128,11 @@ export class AuthService {
     const expiresAt = new Date(
       now.getTime() + OTP_CONFIG.EXPIRY_MINUTES * 60 * 1000,
     );
+    const existingUser = await AuthRepository.findUserByPhone(fullPhone);
 
     // Save OTP to database
     await AuthRepository.createOtp({
+      userId: existingUser?.id,
       identifier: fullPhone,
       codeHash: AuthService.hashOtp(otpCode),
       purpose: OTP_PURPOSES.LOGIN,
@@ -230,6 +232,7 @@ export class AuthService {
       fullPhone,
       now,
     );
+    await AuthRepository.associateOtpWithUser(otpRecord.id, user.id);
 
     const safeUser = AuthService.toSafeUser(
       user,
@@ -307,9 +310,11 @@ export class AuthService {
     const expiresAt = new Date(
       now.getTime() + OTP_CONFIG.EXPIRY_MINUTES * 60 * 1000,
     );
+    const existingUser = await AuthRepository.findUserByPhone(fullPhone);
 
     // Persist new OTP record
     await AuthRepository.createOtp({
+      userId: existingUser?.id,
       identifier: fullPhone,
       purpose: OTP_PURPOSES.LOGIN,
       codeHash,

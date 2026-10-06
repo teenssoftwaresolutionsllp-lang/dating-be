@@ -63,6 +63,13 @@ class AuthRepository {
       .where(eq(otpVerifications.id, otpId));
   }
 
+  async associateOtpWithUser(otpId: string, userId: string): Promise<void> {
+    await db
+      .update(otpVerifications)
+      .set({ userId })
+      .where(eq(otpVerifications.id, otpId));
+  }
+
   async findUserByPhone(phone: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.phone, phone));
 

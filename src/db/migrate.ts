@@ -16,10 +16,9 @@ const runMigration = async () => {
       throw new Error("DATABASE_URL is required to run migrations.");
     }
 
-    console.log(
-      "Connecting to PostgreSQL at:",
-      process.env.DATABASE_URL.replace(/:[^:@]+@/, ":****@"),
-    );
+    const databaseUrl = new URL(process.env.DATABASE_URL);
+    const databaseTarget = `${databaseUrl.hostname}${databaseUrl.port ? `:${databaseUrl.port}` : ""}${databaseUrl.pathname}`;
+    console.log("Connecting to PostgreSQL at:", databaseTarget);
     const db = drizzle(pool);
     console.log(`Applying migrations from ${migrationsFolder}...`);
     await migrate(db, { migrationsFolder });

@@ -40,6 +40,17 @@ import {
   type TrustScoreResult,
 } from "../utils/trustScore";
 
+function getOppositeGender(gender: string | null | undefined): string | null {
+  switch (gender?.trim().toLowerCase()) {
+    case "male":
+      return "female";
+    case "female":
+      return "male";
+    default:
+      return null;
+  }
+}
+
 export interface DiscoveryCard {
   userId: string;
   name: string | null;
@@ -131,6 +142,13 @@ export class MatchService {
     page: number;
     limit: number;
   }> {
+    const [viewerProfile] = await db
+      .select({ gender: profiles.gender })
+      .from(profiles)
+      .where(eq(profiles.userId, userId))
+      .limit(1);
+    const requiredGender = getOppositeGender(viewerProfile?.gender);
+
     // 1. Get list of user IDs already swiped on by this user
     const userSwipes = await db
       .select({ targetUserId: swipes.targetUserId })
@@ -162,9 +180,13 @@ export class MatchService {
         lastActiveAt: users.lastActiveAt,
       })
       .from(users)
+      .innerJoin(profiles, eq(profiles.userId, users.id))
       .where(
         and(
           eq(users.status, "active"),
+          requiredGender
+            ? sql`lower(trim(${profiles.gender})) = ${requiredGender}`
+            : undefined,
           excludedIds.length > 0
             ? notInArray(users.id, excludedIds)
             : undefined,
@@ -973,6 +995,7 @@ export class MatchService {
     const [viewer] = await db
       .select({
         profileId: profiles.id,
+        gender: profiles.gender,
         religion: profiles.religion,
         latitude: locations.latitude,
         longitude: locations.longitude,
@@ -1004,6 +1027,7 @@ export class MatchService {
         ...previousSwipes.map((swipe) => swipe.targetUserId),
       ]),
     );
+    const requiredGender = getOppositeGender(viewer?.gender);
 
     const candidateUsers = await db
       .select({
@@ -1027,6 +1051,9 @@ export class MatchService {
       .where(
         and(
           eq(users.status, "active"),
+          requiredGender
+            ? sql`lower(trim(${profiles.gender})) = ${requiredGender}`
+            : undefined,
           excludedIds.length > 0
             ? notInArray(users.id, excludedIds)
             : undefined,
@@ -1096,6 +1123,12 @@ export class MatchService {
     const eligibleCandidates = candidateUsers.filter((candidate) => {
       const age = calculateAge(candidate.dateOfBirth);
       if (age === null || age < minAge || age > maxAge) return false;
+      if (
+        requiredGender &&
+        candidate.gender.trim().toLowerCase() !== requiredGender
+      ) {
+        return false;
+      }
       if (
         preferredGenders.size > 0 &&
         !preferredGenders.has(candidate.gender.trim().toLowerCase())

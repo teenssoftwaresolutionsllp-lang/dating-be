@@ -53,6 +53,9 @@ function getOppositeGender(gender: string | null | undefined): string | null {
 
 export interface DiscoveryCard {
   userId: string;
+  alreadyLiked: boolean;
+  theyLikedYou: boolean;
+  isMatched: boolean;
   name: string | null;
   age: number | null;
   heightCm: number | null;
@@ -149,12 +152,14 @@ export class MatchService {
       .limit(1);
     const requiredGender = getOppositeGender(viewerProfile?.gender);
 
-    // 1. Get list of user IDs already swiped on by this user
+    // 1. Get prior swipe actions so liked profiles can be marked on their cards.
     const userSwipes = await db
-      .select({ targetUserId: swipes.targetUserId })
+      .select({
+        targetUserId: swipes.targetUserId,
+        action: swipes.action,
+      })
       .from(swipes)
       .where(eq(swipes.userId, userId));
-    const swipedUserIds = userSwipes.map((s) => s.targetUserId);
 
     // 2. Get list of blocked user IDs (either direction)
     const userBlocks = await db
@@ -168,9 +173,9 @@ export class MatchService {
       b.userId === userId ? b.blockedUserId : b.userId,
     );
 
-    // Excluded IDs = self + already swiped + blocked
+    // Previously swiped profiles stay discoverable; only self and blocked users are excluded.
     const excludedIds = Array.from(
-      new Set([userId, ...swipedUserIds, ...blockedUserIds]),
+      new Set([userId, ...blockedUserIds]),
     );
 
     // 3. Query candidate active users
@@ -216,6 +221,42 @@ export class MatchService {
     }
 
     const candidateIds = candidateUsers.map((u) => u.id);
+    const incomingLikes = await db
+      .select({ userId: swipes.userId })
+      .from(swipes)
+      .where(
+        and(
+          inArray(swipes.userId, candidateIds),
+          eq(swipes.targetUserId, userId),
+          or(eq(swipes.action, "like"), eq(swipes.action, "superlike")),
+        ),
+      );
+    const incomingLikeUserIds = new Set(
+      incomingLikes.map((swipe) => swipe.userId),
+    );
+    const activeMatches = await db
+      .select({ user1Id: matches.user1Id, user2Id: matches.user2Id })
+      .from(matches)
+      .where(
+        and(
+          eq(matches.status, "active"),
+          or(
+            and(
+              eq(matches.user1Id, userId),
+              inArray(matches.user2Id, candidateIds),
+            ),
+            and(
+              eq(matches.user2Id, userId),
+              inArray(matches.user1Id, candidateIds),
+            ),
+          ),
+        ),
+      );
+    const activeMatchUserIds = new Set(
+      activeMatches.map((match) =>
+        match.user1Id === userId ? match.user2Id : match.user1Id,
+      ),
+    );
 
     // 4. Fetch Profiles
     const candidateProfiles = await db
@@ -334,8 +375,18 @@ export class MatchService {
         isKycVerified,
       });
 
+      const alreadyLiked = userSwipes.some(
+        (swipe) =>
+          swipe.targetUserId === u.id &&
+          (swipe.action === "like" || swipe.action === "superlike"),
+      );
+      const theyLikedYou = incomingLikeUserIds.has(u.id);
+
       return {
         userId: u.id,
+        alreadyLiked,
+        theyLikedYou,
+        isMatched: activeMatchUserIds.has(u.id),
         name: prof?.name || null,
         age: calculateAge(prof?.dateOfBirth),
         heightCm: prof?.heightCm || null,
@@ -766,6 +817,34 @@ export class MatchService {
     }
 
     const swiperIds = receivedSwipes.map((s) => s.swiperId);
+    const activeMatches = await db
+      .select({
+        id: matches.id,
+        user1Id: matches.user1Id,
+        user2Id: matches.user2Id,
+      })
+      .from(matches)
+      .where(
+        and(
+          eq(matches.status, "active"),
+          or(
+            and(
+              eq(matches.user1Id, userId),
+              inArray(matches.user2Id, swiperIds),
+            ),
+            and(
+              eq(matches.user2Id, userId),
+              inArray(matches.user1Id, swiperIds),
+            ),
+          ),
+        ),
+      );
+    const activeMatchByPartnerId = new Map(
+      activeMatches.map((match) => [
+        match.user1Id === userId ? match.user2Id : match.user1Id,
+        match.id,
+      ]),
+    );
 
     const swiperProfiles = await db
       .select({ ...getTableColumns(profiles), city: locations.city })
@@ -815,6 +894,8 @@ export class MatchService {
         action: s.action,
         likedAt: s.createdAt,
         trustScore,
+        isMatched: activeMatchByPartnerId.has(s.swiperId),
+        matchId: activeMatchByPartnerId.get(s.swiperId) ?? null,
       };
     });
 

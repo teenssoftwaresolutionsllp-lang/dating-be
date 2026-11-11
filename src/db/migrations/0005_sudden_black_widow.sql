@@ -1,1 +1,0 @@
-ALTER TABLE "account_deletion_media" ADD COLUMN "resource_type" varchar(20) DEFAULT 'image' NOT NULL;

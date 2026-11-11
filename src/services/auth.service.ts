@@ -151,8 +151,11 @@ export class AuthService {
       resendCooldown: OTP_CONFIG.RESEND_COOLDOWN_SECONDS,
     };
 
-    // Return devOtp in non-production for testing convenience
-    if (process.env.NODE_ENV !== "production") {
+    // Return devOtp only if MSG91 is not active (mock development mode)
+    const hasMsg91 = Boolean(
+      process.env.MSG91_AUTH_KEY?.trim() && process.env.MSG91_TEMPLATE_ID?.trim()
+    );
+    if (process.env.NODE_ENV !== "production" && !hasMsg91) {
       responseData.devOtp = otpCode;
     }
 
@@ -333,8 +336,11 @@ export class AuthService {
       resendCooldown: OTP_CONFIG.RESEND_COOLDOWN_SECONDS,
     };
 
-    // Expose the OTP in non-production environments for easy testing
-    if (process.env.NODE_ENV !== "production") {
+    // Return devOtp only if MSG91 is not active (mock development mode)
+    const hasMsg91 = Boolean(
+      process.env.MSG91_AUTH_KEY?.trim() && process.env.MSG91_TEMPLATE_ID?.trim()
+    );
+    if (process.env.NODE_ENV !== "production" && !hasMsg91) {
       responseData.devOtp = otpCode;
     }
 

@@ -1,6 +1,8 @@
 node_modules/
 dist/
 .env
+*serviceAccount*.json
+firebase-*.json
 uploads/*
 npm-debug.log*
 .DS_Store

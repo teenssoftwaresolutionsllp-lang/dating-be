@@ -358,6 +358,29 @@ export class MatchController {
       message: "Report submitted successfully. Our safety team will review it.",
     });
   }
+
+  /**
+   * POST /api/v1/matches/reset-feed
+   * Clear swipe history for the current user to reload discovery feed
+   */
+  static async resetFeed(req: Request, res: Response): Promise<Response> {
+    const userId = await resolveUserId(req);
+
+    if (!userId) {
+      return ApiResponse.error(res, {
+        statusCode: 401,
+        message: "Unauthorized",
+        code: "UNAUTHORIZED",
+      });
+    }
+
+    await MatchService.resetUserSwipes(userId);
+
+    return ApiResponse.success(res, {
+      statusCode: 200,
+      message: "Swipe history reset successfully. Discovery feed is refreshed.",
+    });
+  }
 }
 
 export default MatchController;

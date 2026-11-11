@@ -1,6 +1,11 @@
 import type { Request, Response } from "express";
 import MessageService from "../services/message.service";
 import ApiResponse from "../utils/response";
+import { db } from "../db/index";
+import { profiles } from "../db/schema";
+import { eq } from "drizzle-orm";
+import { sendPushNotification } from "../services/notification.service";
+import { SocketService } from "../services/socket.service";
 
 export class MessageController {
   /**
@@ -45,6 +50,40 @@ export class MessageController {
       content,
       messageType: messageType ?? "text",
     });
+
+    // Real-time WebSocket delivery to recipient
+    SocketService.emitToUser(receiverId, "new_message", result.message);
+
+    // Push notification to recipient (non-blocking)
+    db.select({ name: profiles.name })
+      .from(profiles)
+      .where(eq(profiles.userId, senderId))
+      .limit(1)
+      .then(([senderProfile]) => {
+        const senderName = senderProfile?.name || "New Message";
+        const bodyPreview =
+          messageType === "image"
+            ? "📷 Sent you a photo"
+            : messageType === "audio"
+            ? "🎤 Sent you a voice message"
+            : content.length > 100
+            ? content.slice(0, 97) + "..."
+            : content;
+
+        void sendPushNotification({
+          userId: receiverId,
+          title: senderName,
+          body: bodyPreview,
+          data: {
+            type: "NEW_MESSAGE",
+            senderId,
+            conversationId: result.message.conversationId,
+          },
+        });
+      })
+      .catch((err) => {
+        console.warn("[MessageController] Push notification dispatch failed:", err);
+      });
 
     return ApiResponse.success(res, {
       statusCode: 201,

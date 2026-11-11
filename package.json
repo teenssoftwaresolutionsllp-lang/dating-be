@@ -33,6 +33,8 @@
   },
   "homepage": "https://github.com/teenssoftwaresolutionsllp-lang/dating-be#readme",
   "dependencies": {
+    "agora-access-token": "^2.0.4",
+    "agora-token": "^2.0.7",
     "bcryptjs": "^3.0.3",
     "cloudinary": "^2.11.0",
     "cors": "^2.8.6",
@@ -46,6 +48,7 @@
     "morgan": "^1.12.0",
     "multer": "^2.3.0",
     "pg": "^8.23.0",
+    "socket.io": "^4.8.4",
     "tesseract.js": "^7.0.0",
     "uuid": "^14.0.2",
     "zod": "^4.5.4"

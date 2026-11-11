@@ -318,32 +318,32 @@ export class MatchService {
     const candidateLangs =
       profileIds.length > 0
         ? await db
-            .select({
-              profileId: profileLanguages.profileId,
-              languageName: languages.name,
-            })
-            .from(profileLanguages)
-            .innerJoin(
-              languages,
-              sql`${languages.id} = ANY(${profileLanguages.languageIds})`,
-            )
-            .where(inArray(profileLanguages.profileId, profileIds))
+          .select({
+            profileId: profileLanguages.profileId,
+            languageName: languages.name,
+          })
+          .from(profileLanguages)
+          .innerJoin(
+            languages,
+            sql`${languages.id} = ANY(${profileLanguages.languageIds})`,
+          )
+          .where(inArray(profileLanguages.profileId, profileIds))
         : [];
 
     // 9. Fetch Profile Interests
     const candidateInterests =
       profileIds.length > 0
         ? await db
-            .select({
-              profileId: profileInterests.profileId,
-              interestName: interests.name,
-            })
-            .from(profileInterests)
-            .innerJoin(
-              interests,
-              sql`${interests.id} = ANY(${profileInterests.interestIds})`,
-            )
-            .where(inArray(profileInterests.profileId, profileIds))
+          .select({
+            profileId: profileInterests.profileId,
+            interestName: interests.name,
+          })
+          .from(profileInterests)
+          .innerJoin(
+            interests,
+            sql`${interests.id} = ANY(${profileInterests.interestIds})`,
+          )
+          .where(inArray(profileInterests.profileId, profileIds))
         : [];
 
     // Map candidate cards
@@ -354,13 +354,13 @@ export class MatchService {
       const kyc = candidateKyc.find((k) => k.userId === u.id);
       const userLangs = prof
         ? candidateLangs
-            .filter((l) => l.profileId === prof.id)
-            .map((l) => l.languageName)
+          .filter((l) => l.profileId === prof.id)
+          .map((l) => l.languageName)
         : [];
       const userInterests = prof
         ? candidateInterests
-            .filter((i) => i.profileId === prof.id)
-            .map((i) => i.interestName)
+          .filter((i) => i.profileId === prof.id)
+          .map((i) => i.interestName)
         : [];
 
       const isOnline = u.lastActiveAt
@@ -425,12 +425,12 @@ export class MatchService {
         })),
         education: edu
           ? {
-              educationLevel: edu.educationLevel,
-              qualification: edu.qualification,
-              profession: edu.profession,
-              companyName: edu.companyName,
-              incomeRange: edu.incomeRange,
-            }
+            educationLevel: edu.educationLevel,
+            qualification: edu.qualification,
+            profession: edu.profession,
+            companyName: edu.companyName,
+            incomeRange: edu.incomeRange,
+          }
           : null,
         languages: userLangs,
         interests: userInterests,
@@ -764,9 +764,9 @@ export class MatchService {
           trustScore,
           education: edu
             ? {
-                qualification: edu.qualification,
-                profession: edu.profession,
-              }
+              qualification: edu.qualification,
+              profession: edu.profession,
+            }
             : null,
         },
       };
@@ -1191,9 +1191,9 @@ export class MatchService {
 
     const [viewerInterestRecord] = viewer
       ? await db
-          .select({ interestIds: profileInterests.interestIds })
-          .from(profileInterests)
-          .where(eq(profileInterests.profileId, viewer.profileId))
+        .select({ interestIds: profileInterests.interestIds })
+        .from(profileInterests)
+        .where(eq(profileInterests.profileId, viewer.profileId))
       : [];
     const viewerInterestIds = new Set(viewerInterestRecord?.interestIds ?? []);
     const preferredInterestIds = new Set(
@@ -1240,8 +1240,8 @@ export class MatchService {
       const haversine =
         Math.sin(latitudeDelta / 2) ** 2 +
         Math.cos(radians(viewer.latitude)) *
-          Math.cos(radians(latitude)) *
-          Math.sin(longitudeDelta / 2) ** 2;
+        Math.cos(radians(latitude)) *
+        Math.sin(longitudeDelta / 2) ** 2;
       return (
         6371 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine))
       );
@@ -1370,7 +1370,7 @@ export class MatchService {
         scoreParts.push({
           score:
             candidate.religion?.trim().toLowerCase() ===
-            viewer.religion.trim().toLowerCase()
+              viewer.religion.trim().toLowerCase()
               ? 1
               : 0,
           weight: 25,
@@ -1388,13 +1388,13 @@ export class MatchService {
       );
       const matchPercentage = totalWeight
         ? Math.round(
-            (scoreParts.reduce(
-              (total, part) => total + part.score * part.weight,
-              0,
-            ) /
-              totalWeight) *
-              100,
-          )
+          (scoreParts.reduce(
+            (total, part) => total + part.score * part.weight,
+            0,
+          ) /
+            totalWeight) *
+          100,
+        )
         : 0;
 
       const age = calculateAge(candidate.dateOfBirth) ?? 0;
@@ -1463,13 +1463,13 @@ export class MatchService {
       .slice(0, 30);
     const sameReligion = viewer?.religion
       ? formattedCandidates
-          .filter(
-            (candidate) =>
-              candidate.religion.trim().toLowerCase() ===
-              viewer.religion!.trim().toLowerCase(),
-          )
-          .sort(rankByLastActive)
-          .slice(0, 30)
+        .filter(
+          (candidate) =>
+            candidate.religion.trim().toLowerCase() ===
+            viewer.religion!.trim().toLowerCase(),
+        )
+        .sort(rankByLastActive)
+        .slice(0, 30)
       : [];
     const recentlyActive = formattedCandidates
       .filter(

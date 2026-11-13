@@ -89,6 +89,17 @@ export const authenticate = async (
         });
       }
 
+      // Keep user online presence active (throttled to once per minute)
+      if (
+        !user.lastActiveAt ||
+        Date.now() - new Date(user.lastActiveAt).getTime() > 60 * 1000
+      ) {
+        db.update(users)
+          .set({ lastActiveAt: new Date() })
+          .where(eq(users.id, user.id))
+          .catch(() => {});
+      }
+
       req.user = toSafeUser(user);
       return next();
     }

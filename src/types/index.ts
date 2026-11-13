@@ -264,6 +264,7 @@ export interface MessageRecord {
   isDeleted: boolean;
   createdAt: Date;
   updatedAt: Date;
+  metadata?: unknown;
 }
 
 export interface SendMessageResult {

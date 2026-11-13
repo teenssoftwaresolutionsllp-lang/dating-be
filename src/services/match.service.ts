@@ -39,6 +39,8 @@ import {
   formatHeightToFeet,
   type TrustScoreResult,
 } from "../utils/trustScore";
+import { sendPushNotification } from "./notification.service";
+import { SocketService } from "./socket.service";
 
 function getOppositeGender(gender: string | null | undefined): string | null {
   switch (gender?.trim().toLowerCase()) {
@@ -53,6 +55,9 @@ function getOppositeGender(gender: string | null | undefined): string | null {
 
 export interface DiscoveryCard {
   userId: string;
+  alreadyLiked: boolean;
+  theyLikedYou: boolean;
+  isMatched: boolean;
   name: string | null;
   age: number | null;
   heightCm: number | null;
@@ -149,9 +154,12 @@ export class MatchService {
       .limit(1);
     const requiredGender = getOppositeGender(viewerProfile?.gender);
 
-    // 1. Get list of user IDs already swiped on by this user
+    // 1. Get prior swipe actions so liked profiles can be marked on their cards.
     const userSwipes = await db
-      .select({ targetUserId: swipes.targetUserId })
+      .select({
+        targetUserId: swipes.targetUserId,
+        action: swipes.action,
+      })
       .from(swipes)
       .where(eq(swipes.userId, userId));
     const swipedUserIds = userSwipes.map((s) => s.targetUserId);
@@ -168,54 +176,100 @@ export class MatchService {
       b.userId === userId ? b.blockedUserId : b.userId,
     );
 
-    // Excluded IDs = self + already swiped + blocked
+    // Previously swiped profiles stay discoverable; only self and blocked users are excluded.
     const excludedIds = Array.from(
-      new Set([userId, ...swipedUserIds, ...blockedUserIds]),
+      new Set([userId, ...blockedUserIds]),
     );
 
-    // 3. Query candidate active users
-    const candidateQuery = db
-      .select({
-        id: users.id,
-        lastActiveAt: users.lastActiveAt,
-      })
-      .from(users)
-      .innerJoin(profiles, eq(profiles.userId, users.id))
-      .where(
-        and(
-          eq(users.status, "active"),
-          requiredGender
-            ? sql`lower(trim(${profiles.gender})) = ${requiredGender}`
-            : undefined,
-          excludedIds.length > 0
-            ? notInArray(users.id, excludedIds)
-            : undefined,
-          exists(
-            db
-              .select({ id: profilePhotos.id })
-              .from(profilePhotos)
-              .innerJoin(profiles, eq(profilePhotos.userId, profiles.userId))
-              .where(
-                and(
-                  eq(profiles.userId, users.id),
-                  ne(profilePhotos.moderationStatus, "rejected"),
-                  ne(profilePhotos.verificationStatus, "rejected"),
-                  isNull(profilePhotos.deletedAt),
+    // 3. Query candidate active users helper
+    const fetchCandidates = async (excludeList: string[]) => {
+      return db
+        .select({
+          id: users.id,
+          lastActiveAt: users.lastActiveAt,
+        })
+        .from(users)
+        .innerJoin(profiles, eq(profiles.userId, users.id))
+        .where(
+          and(
+            eq(users.status, "active"),
+            requiredGender
+              ? sql`lower(trim(${profiles.gender})) = ${requiredGender}`
+              : undefined,
+            excludeList.length > 0
+              ? notInArray(users.id, excludeList)
+              : undefined,
+            exists(
+              db
+                .select({ id: profilePhotos.id })
+                .from(profilePhotos)
+                .innerJoin(profiles, eq(profilePhotos.userId, profiles.userId))
+                .where(
+                  and(
+                    eq(profiles.userId, users.id),
+                    ne(profilePhotos.moderationStatus, "rejected"),
+                    ne(profilePhotos.verificationStatus, "rejected"),
+                    isNull(profilePhotos.deletedAt),
+                  ),
                 ),
-              ),
+            ),
           ),
-        ),
-      )
-      .orderBy(desc(users.lastActiveAt))
-      .limit(limit)
-      .offset((page - 1) * limit);
+        )
+        .orderBy(desc(users.lastActiveAt))
+        .limit(limit)
+        .offset((page - 1) * limit);
+    };
 
-    const candidateUsers = await candidateQuery;
+    let candidateUsers = await fetchCandidates(excludedIds);
+
+    // Fallback: If all available profiles were already swiped on, recycle profiles
+    // (exclude only self and blocked users) so users never see an empty dead screen
+    if (candidateUsers.length === 0 && swipedUserIds.length > 0) {
+      const relaxedExclude = Array.from(new Set([userId, ...blockedUserIds]));
+      candidateUsers = await fetchCandidates(relaxedExclude);
+    }
+
     if (candidateUsers.length === 0) {
       return { items: [], total: 0, page, limit };
     }
 
     const candidateIds = candidateUsers.map((u) => u.id);
+    const incomingLikes = await db
+      .select({ userId: swipes.userId })
+      .from(swipes)
+      .where(
+        and(
+          inArray(swipes.userId, candidateIds),
+          eq(swipes.targetUserId, userId),
+          or(eq(swipes.action, "like"), eq(swipes.action, "superlike")),
+        ),
+      );
+    const incomingLikeUserIds = new Set(
+      incomingLikes.map((swipe) => swipe.userId),
+    );
+    const activeMatches = await db
+      .select({ user1Id: matches.user1Id, user2Id: matches.user2Id })
+      .from(matches)
+      .where(
+        and(
+          eq(matches.status, "active"),
+          or(
+            and(
+              eq(matches.user1Id, userId),
+              inArray(matches.user2Id, candidateIds),
+            ),
+            and(
+              eq(matches.user2Id, userId),
+              inArray(matches.user1Id, candidateIds),
+            ),
+          ),
+        ),
+      );
+    const activeMatchUserIds = new Set(
+      activeMatches.map((match) =>
+        match.user1Id === userId ? match.user2Id : match.user1Id,
+      ),
+    );
 
     // 4. Fetch Profiles
     const candidateProfiles = await db
@@ -264,32 +318,32 @@ export class MatchService {
     const candidateLangs =
       profileIds.length > 0
         ? await db
-            .select({
-              profileId: profileLanguages.profileId,
-              languageName: languages.name,
-            })
-            .from(profileLanguages)
-            .innerJoin(
-              languages,
-              sql`${languages.id} = ANY(${profileLanguages.languageIds})`,
-            )
-            .where(inArray(profileLanguages.profileId, profileIds))
+          .select({
+            profileId: profileLanguages.profileId,
+            languageName: languages.name,
+          })
+          .from(profileLanguages)
+          .innerJoin(
+            languages,
+            sql`${languages.id} = ANY(${profileLanguages.languageIds})`,
+          )
+          .where(inArray(profileLanguages.profileId, profileIds))
         : [];
 
     // 9. Fetch Profile Interests
     const candidateInterests =
       profileIds.length > 0
         ? await db
-            .select({
-              profileId: profileInterests.profileId,
-              interestName: interests.name,
-            })
-            .from(profileInterests)
-            .innerJoin(
-              interests,
-              sql`${interests.id} = ANY(${profileInterests.interestIds})`,
-            )
-            .where(inArray(profileInterests.profileId, profileIds))
+          .select({
+            profileId: profileInterests.profileId,
+            interestName: interests.name,
+          })
+          .from(profileInterests)
+          .innerJoin(
+            interests,
+            sql`${interests.id} = ANY(${profileInterests.interestIds})`,
+          )
+          .where(inArray(profileInterests.profileId, profileIds))
         : [];
 
     // Map candidate cards
@@ -300,13 +354,13 @@ export class MatchService {
       const kyc = candidateKyc.find((k) => k.userId === u.id);
       const userLangs = prof
         ? candidateLangs
-            .filter((l) => l.profileId === prof.id)
-            .map((l) => l.languageName)
+          .filter((l) => l.profileId === prof.id)
+          .map((l) => l.languageName)
         : [];
       const userInterests = prof
         ? candidateInterests
-            .filter((i) => i.profileId === prof.id)
-            .map((i) => i.interestName)
+          .filter((i) => i.profileId === prof.id)
+          .map((i) => i.interestName)
         : [];
 
       const isOnline = u.lastActiveAt
@@ -334,8 +388,18 @@ export class MatchService {
         isKycVerified,
       });
 
+      const alreadyLiked = userSwipes.some(
+        (swipe) =>
+          swipe.targetUserId === u.id &&
+          (swipe.action === "like" || swipe.action === "superlike"),
+      );
+      const theyLikedYou = incomingLikeUserIds.has(u.id);
+
       return {
         userId: u.id,
+        alreadyLiked,
+        theyLikedYou,
+        isMatched: activeMatchUserIds.has(u.id),
         name: prof?.name || null,
         age: calculateAge(prof?.dateOfBirth),
         heightCm: prof?.heightCm || null,
@@ -361,12 +425,12 @@ export class MatchService {
         })),
         education: edu
           ? {
-              educationLevel: edu.educationLevel,
-              qualification: edu.qualification,
-              profession: edu.profession,
-              companyName: edu.companyName,
-              incomeRange: edu.incomeRange,
-            }
+            educationLevel: edu.educationLevel,
+            qualification: edu.qualification,
+            profession: edu.profession,
+            companyName: edu.companyName,
+            incomeRange: edu.incomeRange,
+          }
           : null,
         languages: userLangs,
         interests: userInterests,
@@ -530,6 +594,39 @@ export class MatchService {
           age: calculateAge(targetProfile?.dateOfBirth),
           trustScore: targetTrustScore,
         };
+
+        // Notify targetUserId about the new mutual match (non-blocking)
+        db.select({ name: profiles.name })
+          .from(profiles)
+          .where(eq(profiles.userId, userId))
+          .limit(1)
+          .then(([currentUserProfile]) => {
+            const currentUserName = currentUserProfile?.name || "Someone";
+
+            // Push notification to target user
+            void sendPushNotification({
+              userId: targetUserId,
+              title: "New Match! 🎉",
+              body: `You and ${currentUserName} liked each other! Say hello.`,
+              data: {
+                type: "NEW_MATCH",
+                matchId: matchId || "",
+                matchedUserId: userId,
+              },
+            });
+
+            // Real-time WebSocket delivery
+            SocketService.emitToUser(targetUserId, "new_match", {
+              matchId,
+              matchedUser: {
+                id: userId,
+                name: currentUserName,
+              },
+            });
+          })
+          .catch((err) => {
+            console.warn("[MatchService] Push notification dispatch failed:", err);
+          });
       }
     }
 
@@ -667,9 +764,9 @@ export class MatchService {
           trustScore,
           education: edu
             ? {
-                qualification: edu.qualification,
-                profession: edu.profession,
-              }
+              qualification: edu.qualification,
+              profession: edu.profession,
+            }
             : null,
         },
       };
@@ -766,6 +863,34 @@ export class MatchService {
     }
 
     const swiperIds = receivedSwipes.map((s) => s.swiperId);
+    const activeMatches = await db
+      .select({
+        id: matches.id,
+        user1Id: matches.user1Id,
+        user2Id: matches.user2Id,
+      })
+      .from(matches)
+      .where(
+        and(
+          eq(matches.status, "active"),
+          or(
+            and(
+              eq(matches.user1Id, userId),
+              inArray(matches.user2Id, swiperIds),
+            ),
+            and(
+              eq(matches.user2Id, userId),
+              inArray(matches.user1Id, swiperIds),
+            ),
+          ),
+        ),
+      );
+    const activeMatchByPartnerId = new Map(
+      activeMatches.map((match) => [
+        match.user1Id === userId ? match.user2Id : match.user1Id,
+        match.id,
+      ]),
+    );
 
     const swiperProfiles = await db
       .select({ ...getTableColumns(profiles), city: locations.city })
@@ -815,6 +940,8 @@ export class MatchService {
         action: s.action,
         likedAt: s.createdAt,
         trustScore,
+        isMatched: activeMatchByPartnerId.has(s.swiperId),
+        matchId: activeMatchByPartnerId.get(s.swiperId) ?? null,
       };
     });
 
@@ -1064,9 +1191,9 @@ export class MatchService {
 
     const [viewerInterestRecord] = viewer
       ? await db
-          .select({ interestIds: profileInterests.interestIds })
-          .from(profileInterests)
-          .where(eq(profileInterests.profileId, viewer.profileId))
+        .select({ interestIds: profileInterests.interestIds })
+        .from(profileInterests)
+        .where(eq(profileInterests.profileId, viewer.profileId))
       : [];
     const viewerInterestIds = new Set(viewerInterestRecord?.interestIds ?? []);
     const preferredInterestIds = new Set(
@@ -1113,8 +1240,8 @@ export class MatchService {
       const haversine =
         Math.sin(latitudeDelta / 2) ** 2 +
         Math.cos(radians(viewer.latitude)) *
-          Math.cos(radians(latitude)) *
-          Math.sin(longitudeDelta / 2) ** 2;
+        Math.cos(radians(latitude)) *
+        Math.sin(longitudeDelta / 2) ** 2;
       return (
         6371 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine))
       );
@@ -1243,7 +1370,7 @@ export class MatchService {
         scoreParts.push({
           score:
             candidate.religion?.trim().toLowerCase() ===
-            viewer.religion.trim().toLowerCase()
+              viewer.religion.trim().toLowerCase()
               ? 1
               : 0,
           weight: 25,
@@ -1261,13 +1388,13 @@ export class MatchService {
       );
       const matchPercentage = totalWeight
         ? Math.round(
-            (scoreParts.reduce(
-              (total, part) => total + part.score * part.weight,
-              0,
-            ) /
-              totalWeight) *
-              100,
-          )
+          (scoreParts.reduce(
+            (total, part) => total + part.score * part.weight,
+            0,
+          ) /
+            totalWeight) *
+          100,
+        )
         : 0;
 
       const age = calculateAge(candidate.dateOfBirth) ?? 0;
@@ -1336,13 +1463,13 @@ export class MatchService {
       .slice(0, 30);
     const sameReligion = viewer?.religion
       ? formattedCandidates
-          .filter(
-            (candidate) =>
-              candidate.religion.trim().toLowerCase() ===
-              viewer.religion!.trim().toLowerCase(),
-          )
-          .sort(rankByLastActive)
-          .slice(0, 30)
+        .filter(
+          (candidate) =>
+            candidate.religion.trim().toLowerCase() ===
+            viewer.religion!.trim().toLowerCase(),
+        )
+        .sort(rankByLastActive)
+        .slice(0, 30)
       : [];
     const recentlyActive = formattedCandidates
       .filter(
@@ -1391,6 +1518,13 @@ export class MatchService {
       description: description || null,
       status: "pending",
     });
+  }
+
+  /**
+   * 12. RESET USER SWIPES (Clear swipe history to start discovery feed fresh)
+   */
+  static async resetUserSwipes(userId: string): Promise<void> {
+    await db.delete(swipes).where(eq(swipes.userId, userId));
   }
 }
 

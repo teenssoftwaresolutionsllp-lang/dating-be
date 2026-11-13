@@ -313,6 +313,7 @@ export class MessageService {
       receiverId: message.senderId === userId ? otherUserId : userId,
       content: message.content || "",
       messageType: message.messageType,
+      metadata: message.metadata,
       isRead: readByUser.has(
         `${message.id}:${message.senderId === userId ? otherUserId : userId}`,
       ),

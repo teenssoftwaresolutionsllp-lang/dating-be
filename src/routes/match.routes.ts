@@ -13,6 +13,9 @@ router.use(authenticate);
 // GET /api/v1/matches/feed — Get candidate cards with Trust Score %
 router.get("/feed", asyncHandler(MatchController.getDiscoveryFeed));
 
+// POST /api/v1/matches/reset-feed — Reset current user's swipe history to fresh feed
+router.post("/reset-feed", asyncHandler(MatchController.resetFeed));
+
 // GET /api/v1/matches/people-categories — Get categorized candidates for People screen
 router.get("/people-categories", asyncHandler(MatchController.getPeopleCategories));
 

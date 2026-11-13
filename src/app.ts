@@ -10,6 +10,8 @@ import profileRoutes from "./routes/profile.routes";
 import locationRoutes from "./routes/location.routes";
 import matchRoutes from "./routes/match.routes";
 import messageRoutes from "./routes/message.routes";
+import callRoutes from "./routes/call.routes";
+import userRoutes from "./routes/user.routes";
 import { notFoundHandler, errorHandler } from "./middleware/error.middleware";
 
 const app: Express = express();
@@ -68,6 +70,10 @@ app.use("/api/v1/matches", matchRoutes);
 
 // Messaging & Chat
 app.use("/api/v1/messages", messageRoutes);
+
+// Real-Time Communication & Calls (Agora RTC)
+app.use("/api/v1/calls", callRoutes);
+app.use("/api/v1/users", userRoutes);
 
 // =================================================================
 // Error Handling

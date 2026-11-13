@@ -113,6 +113,16 @@ class AuthRepository {
     return user;
   }
 
+  async updateUserLanguage(userId: string, language: string): Promise<User | undefined> {
+    const [user] = await db
+      .update(users)
+      .set({ preferredLanguage: language, updatedAt: new Date() })
+      .where(eq(users.id, userId))
+      .returning();
+
+    return user;
+  }
+
   async createSession(values: NewUserSession): Promise<void> {
     await db.insert(userSessions).values(values);
   }

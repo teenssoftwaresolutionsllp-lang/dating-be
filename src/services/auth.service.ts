@@ -78,7 +78,7 @@ export class AuthService {
       userId: user.id,
       phone: user.phone,
       countryCode,
-      preferredLanguage,
+      preferredLanguage: user.preferredLanguage || preferredLanguage || "en",
       role: user.role,
       isVerified: user.phoneVerified,
       isActive: user.status === "active",
@@ -231,6 +231,7 @@ export class AuthService {
     const { user, isNewUser } = await AccountRepository.resolvePhoneLogin(
       fullPhone,
       now,
+      preferredLanguage,
     );
     await AuthRepository.associateOtpWithUser(otpRecord.id, user.id);
 
@@ -355,15 +356,15 @@ export class AuthService {
       throw error;
     }
 
-    const user = await AuthRepository.findUserById(userId);
-    if (!user) {
+    const updatedUser = await AuthRepository.updateUserLanguage(userId, language);
+    if (!updatedUser) {
       const error = new Error("User not found") as AppError;
       error.statusCode = 404;
       error.code = "USER_NOT_FOUND";
       throw error;
     }
 
-    return { userId, language };
+    return { userId, language: updatedUser.preferredLanguage };
   }
 
   static async socialAuth({
@@ -426,8 +427,8 @@ export class AuthService {
       id: user.id,
       userId: user.id,
       phone: user.phone,
-      countryCode: "+1",
-      preferredLanguage: "en",
+      countryCode: "+91",
+      preferredLanguage: user.preferredLanguage || "en",
       role: user.role,
       isVerified: user.phoneVerified,
       isActive: user.status === "active",

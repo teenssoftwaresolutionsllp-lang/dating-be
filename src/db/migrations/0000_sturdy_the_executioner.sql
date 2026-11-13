@@ -35,6 +35,21 @@ CREATE TABLE "subscription_plans" (
 	CONSTRAINT "sub_plan_price_non_negative_check" CHECK ("subscription_plans"."price" >= 0)
 );
 --> statement-breakpoint
+CREATE TABLE "locations" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"google_place_id" varchar(255) NOT NULL,
+	"is_seeded" boolean DEFAULT false NOT NULL,
+	"name" varchar(255) NOT NULL,
+	"city" varchar(120),
+	"state" varchar(120),
+	"country" varchar(120),
+	"latitude" double precision,
+	"longitude" double precision,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "locations_google_place_id_unique" UNIQUE("google_place_id")
+);
+--> statement-breakpoint
 CREATE TABLE "notification_settings" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" uuid NOT NULL,
@@ -82,11 +97,11 @@ CREATE TABLE "profiles" (
 	"height_cm" smallint,
 	"bio" text,
 	"relationship_status" varchar(30),
-	"city" varchar(100),
-	"state" varchar(100),
-	"country" varchar(100),
-	"latitude" double precision,
-	"longitude" double precision,
+	"food_preference" varchar(50),
+	"drinking" varchar(50),
+	"smoking" varchar(50),
+	"vibes" jsonb,
+	"location_id" uuid,
 	"location_updated_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -153,6 +168,8 @@ CREATE TABLE "users" (
 	"auth_provider" varchar(30) DEFAULT 'email' NOT NULL,
 	"role" varchar(20) DEFAULT 'user' NOT NULL,
 	"status" varchar(20) DEFAULT 'active' NOT NULL,
+	"deactivated_at" timestamp with time zone,
+	"deletion_scheduled_at" timestamp with time zone,
 	"email_verified" boolean DEFAULT false NOT NULL,
 	"phone_verified" boolean DEFAULT false NOT NULL,
 	"last_login_at" timestamp with time zone,
@@ -190,14 +207,25 @@ CREATE TABLE "plan_features" (
 );
 --> statement-breakpoint
 CREATE TABLE "profile_interests" (
-	"profile_id" uuid NOT NULL,
-	"interest_id" integer NOT NULL,
-	CONSTRAINT "profile_interests_profile_id_interest_id_pk" PRIMARY KEY("profile_id","interest_id")
+	"profile_id" uuid PRIMARY KEY NOT NULL,
+	"interest_ids" integer[] NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "profile_languages" (
 	"profile_id" uuid PRIMARY KEY NOT NULL,
 	"language_ids" integer[] NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "account_deletion_media" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"provider" varchar(20) NOT NULL,
+	"resource_type" varchar(20) DEFAULT 'image' NOT NULL,
+	"storage_key" text NOT NULL,
+	"storage_url" text,
+	"attempts" integer DEFAULT 0 NOT NULL,
+	"last_error" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "admin_audit_logs" (
@@ -270,9 +298,10 @@ CREATE TABLE "kyc_verifications" (
 	"document_number_hash" text NOT NULL,
 	"document_image_storage_key" text,
 	"document_image_url" text,
+	"selfie_storage_key" text,
 	"status" varchar(20) DEFAULT 'pending' NOT NULL,
 	"provider" varchar(50),
-	"provider_reference" varchar(150),
+	"provider_reference" text,
 	"submitted_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"verified_at" timestamp with time zone,
 	"rejection_reason" text,
@@ -487,6 +516,7 @@ ALTER TABLE "notification_settings" ADD CONSTRAINT "notification_settings_user_i
 ALTER TABLE "otp_verifications" ADD CONSTRAINT "otp_verifications_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "password_reset_tokens" ADD CONSTRAINT "password_reset_tokens_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "profiles" ADD CONSTRAINT "profiles_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "profiles" ADD CONSTRAINT "profiles_location_id_locations_id_fk" FOREIGN KEY ("location_id") REFERENCES "public"."locations"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "user_devices" ADD CONSTRAINT "user_devices_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "user_login_events" ADD CONSTRAINT "user_login_events_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "user_sessions" ADD CONSTRAINT "user_sessions_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -499,7 +529,6 @@ ALTER TABLE "message_reads" ADD CONSTRAINT "message_reads_user_id_users_id_fk" F
 ALTER TABLE "plan_features" ADD CONSTRAINT "plan_features_plan_id_subscription_plans_id_fk" FOREIGN KEY ("plan_id") REFERENCES "public"."subscription_plans"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "plan_features" ADD CONSTRAINT "plan_features_feature_id_subscription_features_id_fk" FOREIGN KEY ("feature_id") REFERENCES "public"."subscription_features"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "profile_interests" ADD CONSTRAINT "profile_interests_profile_id_profiles_id_fk" FOREIGN KEY ("profile_id") REFERENCES "public"."profiles"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "profile_interests" ADD CONSTRAINT "profile_interests_interest_id_interests_id_fk" FOREIGN KEY ("interest_id") REFERENCES "public"."interests"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "profile_languages" ADD CONSTRAINT "profile_languages_profile_id_profiles_id_fk" FOREIGN KEY ("profile_id") REFERENCES "public"."profiles"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "admin_audit_logs" ADD CONSTRAINT "admin_audit_logs_admin_id_users_id_fk" FOREIGN KEY ("admin_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "blocks" ADD CONSTRAINT "blocks_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -541,6 +570,11 @@ CREATE UNIQUE INDEX "languages_name_unique_idx" ON "languages" USING btree ("nam
 CREATE UNIQUE INDEX "sub_features_code_unique_idx" ON "subscription_features" USING btree ("code");--> statement-breakpoint
 CREATE UNIQUE INDEX "sub_plans_name_unique_idx" ON "subscription_plans" USING btree ("name");--> statement-breakpoint
 CREATE INDEX "sub_plans_is_active_idx" ON "subscription_plans" USING btree ("is_active");--> statement-breakpoint
+CREATE UNIQUE INDEX "locations_google_place_id_unique_idx" ON "locations" USING btree ("google_place_id");--> statement-breakpoint
+CREATE INDEX "locations_city_idx" ON "locations" USING btree ("city");--> statement-breakpoint
+CREATE INDEX "locations_state_idx" ON "locations" USING btree ("state");--> statement-breakpoint
+CREATE INDEX "locations_country_idx" ON "locations" USING btree ("country");--> statement-breakpoint
+CREATE INDEX "locations_lat_long_idx" ON "locations" USING btree ("latitude","longitude");--> statement-breakpoint
 CREATE UNIQUE INDEX "notif_settings_user_id_unique_idx" ON "notification_settings" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "otp_identifier_purpose_idx" ON "otp_verifications" USING btree ("identifier","purpose");--> statement-breakpoint
 CREATE INDEX "otp_expires_at_idx" ON "otp_verifications" USING btree ("expires_at");--> statement-breakpoint
@@ -551,8 +585,7 @@ CREATE INDEX "pwd_reset_expires_at_idx" ON "password_reset_tokens" USING btree (
 CREATE UNIQUE INDEX "profiles_user_id_unique_idx" ON "profiles" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "profiles_gender_idx" ON "profiles" USING btree ("gender");--> statement-breakpoint
 CREATE INDEX "profiles_dob_idx" ON "profiles" USING btree ("date_of_birth");--> statement-breakpoint
-CREATE INDEX "profiles_city_idx" ON "profiles" USING btree ("city");--> statement-breakpoint
-CREATE INDEX "profiles_lat_long_idx" ON "profiles" USING btree ("latitude","longitude");--> statement-breakpoint
+CREATE INDEX "profiles_location_id_idx" ON "profiles" USING btree ("location_id");--> statement-breakpoint
 CREATE INDEX "user_devices_user_id_idx" ON "user_devices" USING btree ("user_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "user_devices_token_unique_idx" ON "user_devices" USING btree ("device_token");--> statement-breakpoint
 CREATE INDEX "login_events_user_id_idx" ON "user_login_events" USING btree ("user_id");--> statement-breakpoint
@@ -568,10 +601,12 @@ CREATE INDEX "users_status_idx" ON "users" USING btree ("status");--> statement-
 CREATE INDEX "users_role_idx" ON "users" USING btree ("role");--> statement-breakpoint
 CREATE INDEX "users_created_at_idx" ON "users" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "users_last_active_at_idx" ON "users" USING btree ("last_active_at");--> statement-breakpoint
+CREATE INDEX "users_deletion_scheduled_at_idx" ON "users" USING btree ("status","deletion_scheduled_at");--> statement-breakpoint
 CREATE INDEX "conv_members_user_id_idx" ON "conversation_members" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "message_reads_user_read_at_idx" ON "message_reads" USING btree ("user_id","read_at");--> statement-breakpoint
-CREATE INDEX "profile_interests_interest_id_idx" ON "profile_interests" USING btree ("interest_id");--> statement-breakpoint
+CREATE INDEX "profile_interests_interest_ids_gin_idx" ON "profile_interests" USING gin ("interest_ids");--> statement-breakpoint
 CREATE INDEX "profile_languages_language_ids_gin_idx" ON "profile_languages" USING gin ("language_ids");--> statement-breakpoint
+CREATE INDEX "account_deletion_media_created_idx" ON "account_deletion_media" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "admin_logs_admin_id_idx" ON "admin_audit_logs" USING btree ("admin_id");--> statement-breakpoint
 CREATE INDEX "admin_logs_entity_idx" ON "admin_audit_logs" USING btree ("entity_type","entity_id");--> statement-breakpoint
 CREATE INDEX "admin_logs_created_at_idx" ON "admin_audit_logs" USING btree ("created_at");--> statement-breakpoint

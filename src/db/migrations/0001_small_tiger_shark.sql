@@ -1,0 +1,2 @@
+ALTER TABLE "users" ADD COLUMN "preferred_language" varchar(10) DEFAULT 'en' NOT NULL;--> statement-breakpoint
+ALTER TABLE "users" ADD CONSTRAINT "users_preferred_language_check" CHECK ("users"."preferred_language" IN ('en', 'te'));

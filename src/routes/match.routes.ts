@@ -55,4 +55,16 @@ router.post("/block", asyncHandler(MatchController.blockUser));
 // POST /api/v1/matches/report — Report a user
 router.post("/report", asyncHandler(MatchController.reportUser));
 
+// =================================================================
+// Profile Views & Real-Time Badge Counts
+// =================================================================
+// POST /api/v1/matches/profile-view — Record profile view and emit real-time event
+router.post("/profile-view", asyncHandler(MatchController.recordProfileView));
+
+// GET /api/v1/matches/profile-viewers — Get recent profile viewers list
+router.get("/profile-viewers", asyncHandler(MatchController.getProfileViewers));
+
+// GET /api/v1/matches/badge-counts — Get real-time badge counts
+router.get("/badge-counts", asyncHandler(MatchController.getBadgeCounts));
+
 export default router;

@@ -627,6 +627,55 @@ export class MatchService {
           .catch((err) => {
             console.warn("[MatchService] Push notification dispatch failed:", err);
           });
+      } else {
+        // Real-time dispatch for incoming like (Likes tab badge + notification)
+        Promise.all([
+          db
+            .select({ name: profiles.name })
+            .from(profiles)
+            .where(eq(profiles.userId, userId))
+            .limit(1),
+          db
+            .select({ url: profilePhotos.url })
+            .from(profilePhotos)
+            .where(
+              and(
+                eq(profilePhotos.userId, userId),
+                eq(profilePhotos.isPrimary, true),
+              ),
+            )
+            .limit(1),
+        ])
+          .then(([[currentUserProfile], [primaryPhoto]]) => {
+            const currentUserName = currentUserProfile?.name || "Someone";
+            const likerPhoto = primaryPhoto?.url || null;
+
+            // 1. WebSocket real-time delivery
+            SocketService.emitToUser(targetUserId, "new_like", {
+              likerId: userId,
+              likerName: currentUserName,
+              likerPhoto,
+              isSuperLike: direction === "superlike",
+              createdAt: new Date().toISOString(),
+            });
+
+            // 2. Push Notification
+            void sendPushNotification({
+              userId: targetUserId,
+              title: direction === "superlike" ? "Super Like! 🌟" : "New Like! ❤️",
+              body: direction === "superlike"
+                ? `${currentUserName} sent you a Super Like! Check your Likes tab.`
+                : `${currentUserName} liked your profile! Check your Likes tab.`,
+              data: {
+                type: "NEW_LIKE",
+                likerId: userId,
+                isSuperLike: direction === "superlike" ? "true" : "false",
+              },
+            });
+          })
+          .catch((err) => {
+            console.warn("[MatchService] Realtime like dispatch failed:", err);
+          });
       }
     }
 
@@ -1525,6 +1574,101 @@ export class MatchService {
    */
   static async resetUserSwipes(userId: string): Promise<void> {
     await db.delete(swipes).where(eq(swipes.userId, userId));
+  }
+
+  // In-memory store for recent profile views (per profile owner)
+  private static profileViewersMap: Map<
+    string,
+    Array<{
+      id: string;
+      name: string;
+      subtitle: string;
+      time: string;
+      avatar: string | null;
+      viewedAt: Date;
+    }>
+  > = new Map();
+
+  /**
+   * 13. RECORD PROFILE VIEW & EMIT REAL-TIME NOTIFICATION
+   */
+  static async recordProfileView(viewerId: string, viewedUserId: string) {
+    if (!viewerId || !viewedUserId || viewerId === viewedUserId) {
+      return null;
+    }
+
+    const [viewerProfile] = await db
+      .select({ name: profiles.name, bio: profiles.bio })
+      .from(profiles)
+      .where(eq(profiles.userId, viewerId))
+      .limit(1);
+
+    const [primaryPhoto] = await db
+      .select({ url: profilePhotos.url })
+      .from(profilePhotos)
+      .where(
+        and(
+          eq(profilePhotos.userId, viewerId),
+          eq(profilePhotos.isPrimary, true),
+        ),
+      )
+      .limit(1);
+
+    const now = new Date();
+    const viewerItem = {
+      id: viewerId,
+      name: viewerProfile?.name || "Someone",
+      subtitle: viewerProfile?.bio || "Viewed your profile",
+      time: "Just now",
+      avatar: primaryPhoto?.url || null,
+      viewedAt: now,
+    };
+
+    const existing = this.profileViewersMap.get(viewedUserId) || [];
+    const updated = [
+      viewerItem,
+      ...existing.filter((v) => v.id !== viewerId),
+    ].slice(0, 50);
+    this.profileViewersMap.set(viewedUserId, updated);
+
+    // Emit real-time WebSocket event to the profile owner!
+    SocketService.emitToUser(viewedUserId, "profile_viewed", {
+      ...viewerItem,
+      viewedAt: now.toISOString(),
+      unreadCount: updated.length,
+    });
+
+    return viewerItem;
+  }
+
+  /**
+   * 14. GET RECENT PROFILE VIEWERS
+   */
+  static async getProfileViewers(userId: string) {
+    return this.profileViewersMap.get(userId) || [];
+  }
+
+  /**
+   * 15. GET CONSOLIDATED BADGE COUNTS
+   */
+  static async getBadgeCounts(userId: string) {
+    const [likesCountResult] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(swipes)
+      .where(
+        and(
+          eq(swipes.targetUserId, userId),
+          or(eq(swipes.action, "like"), eq(swipes.action, "superlike")),
+        ),
+      );
+
+    const viewers = this.profileViewersMap.get(userId) || [];
+
+    return {
+      likesCount: Number(likesCountResult?.count || 0),
+      unreadChatsCount: 0,
+      unreadViewersCount: viewers.length,
+    };
   }
 }
 

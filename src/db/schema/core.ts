@@ -39,6 +39,9 @@ export const users = pgTable(
       .notNull(),
     role: varchar("role", { length: 20 }).default("user").notNull(), // user, moderator, admin
     status: varchar("status", { length: 20 }).default("active").notNull(), // active, deactivated, suspended, banned, deleted
+    preferredLanguage: varchar("preferred_language", { length: 10 })
+      .default("en")
+      .notNull(),
     deactivatedAt: timestamp("deactivated_at", { withTimezone: true }),
     deletionScheduledAt: timestamp("deletion_scheduled_at", {
       withTimezone: true,
@@ -73,6 +76,10 @@ export const users = pgTable(
     check(
       "users_failed_attempts_non_negative_check",
       sql`${table.failedLoginAttempts} >= 0`,
+    ),
+    check(
+      "users_preferred_language_check",
+      sql`${table.preferredLanguage} IN ('en', 'te')`,
     ),
   ],
 );

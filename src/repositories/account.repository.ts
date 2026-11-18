@@ -264,7 +264,9 @@ class AccountRepository {
   async resolvePhoneLogin(
     phone: string,
     now: Date,
+    preferredLanguage?: string,
   ): Promise<PhoneLoginResolution> {
+    const validLang = preferredLanguage === "te" ? "te" : "en";
     return db.transaction(async (transaction) => {
       const [existingUser] = await transaction
         .select()
@@ -280,6 +282,7 @@ class AccountRepository {
             phoneVerified: true,
             status: "active",
             authProvider: "phone",
+            preferredLanguage: validLang,
             lastLoginAt: now,
             lastActiveAt: now,
           })
@@ -340,6 +343,7 @@ class AccountRepository {
             phoneVerified: true,
             status: "active",
             authProvider: "phone",
+            preferredLanguage: validLang,
             lastLoginAt: now,
             lastActiveAt: now,
           })

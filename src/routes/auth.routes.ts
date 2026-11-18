@@ -84,4 +84,11 @@ router.post(
 // Return basic account information for the authenticated user.
 router.get("/profile", authenticate, asyncHandler(AuthController.getMe));
 
+// Set preferred display language for authenticated user
+router.post(
+  "/language",
+  authenticate,
+  asyncHandler(AuthController.setLanguage),
+);
+
 export default router;

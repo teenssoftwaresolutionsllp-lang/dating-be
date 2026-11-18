@@ -381,6 +381,91 @@ export class MatchController {
       message: "Swipe history reset successfully. Discovery feed is refreshed.",
     });
   }
+
+  /**
+   * POST /api/v1/matches/profile-view
+   * Record a profile visit and notify the profile owner in real time
+   */
+  static async recordProfileView(req: Request, res: Response): Promise<Response> {
+    const userId = await resolveUserId(req);
+    const { viewedUserId, targetUserId } = req.body as {
+      viewedUserId?: string;
+      targetUserId?: string;
+    };
+    const target = viewedUserId || targetUserId;
+
+    if (!userId) {
+      return ApiResponse.error(res, {
+        statusCode: 401,
+        message: "Unauthorized",
+        code: "UNAUTHORIZED",
+      });
+    }
+
+    if (!target || typeof target !== "string") {
+      return ApiResponse.error(res, {
+        statusCode: 400,
+        message: "viewedUserId is required in request body",
+        code: "VALIDATION_ERROR",
+      });
+    }
+
+    const result = await MatchService.recordProfileView(userId, target);
+
+    return ApiResponse.success(res, {
+      statusCode: 200,
+      message: "Profile view recorded successfully",
+      data: result,
+    });
+  }
+
+  /**
+   * GET /api/v1/matches/profile-viewers
+   * Retrieve list of recent users who viewed current user's profile
+   */
+  static async getProfileViewers(req: Request, res: Response): Promise<Response> {
+    const userId = await resolveUserId(req);
+
+    if (!userId) {
+      return ApiResponse.error(res, {
+        statusCode: 401,
+        message: "Unauthorized",
+        code: "UNAUTHORIZED",
+      });
+    }
+
+    const viewers = await MatchService.getProfileViewers(userId);
+
+    return ApiResponse.success(res, {
+      statusCode: 200,
+      message: "Profile viewers retrieved successfully",
+      data: viewers,
+    });
+  }
+
+  /**
+   * GET /api/v1/matches/badge-counts
+   * Consolidated counts for tab badges and notifications
+   */
+  static async getBadgeCounts(req: Request, res: Response): Promise<Response> {
+    const userId = await resolveUserId(req);
+
+    if (!userId) {
+      return ApiResponse.error(res, {
+        statusCode: 401,
+        message: "Unauthorized",
+        code: "UNAUTHORIZED",
+      });
+    }
+
+    const counts = await MatchService.getBadgeCounts(userId);
+
+    return ApiResponse.success(res, {
+      statusCode: 200,
+      message: "Badge counts retrieved successfully",
+      data: counts,
+    });
+  }
 }
 
 export default MatchController;

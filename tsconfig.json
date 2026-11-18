@@ -6,6 +6,7 @@
     "moduleResolution": "bundler",
     "lib": ["ES2022"],
     "outDir": "./dist",
+    "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -18,6 +19,6 @@
     "noImplicitAny": true,
     "isolatedModules": true
   },
-  "include": ["src/**/*", "drizzle.config.ts"],
+  "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }

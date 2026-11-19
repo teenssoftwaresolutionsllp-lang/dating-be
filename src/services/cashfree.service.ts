@@ -58,9 +58,12 @@ export class CashfreeService {
 
     try {
       const url = `${this.baseUrl}/face-match`;
+      const verificationId = `cf_fm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
       // Build multipart/form-data payload with image blobs
       const formData = new FormData();
+      formData.append("verification_id", verificationId);
+
       const blob1 = new Blob([new Uint8Array(image1)], { type: "image/jpeg" });
       const blob2 = new Blob([new Uint8Array(image2)], { type: "image/jpeg" });
 
@@ -69,7 +72,7 @@ export class CashfreeService {
       formData.append("threshold", String(this.threshold));
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 12000);
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
 
       const response = await fetch(url, {
         method: "POST",
@@ -90,26 +93,50 @@ export class CashfreeService {
           "⚠️ [CashfreeService] API returned non-success response:",
           data,
         );
-        // If Cashfree returned an explicit no-face or face-mismatch rejection
-        if (data?.message && (data.message.includes("face") || data.message.includes("match"))) {
+        // If Cashfree returned an explicit rejection (no face detected or mismatch)
+        if (
+          data?.face_match_result === "NO" ||
+          (data?.message &&
+            (data.message.toLowerCase().includes("face") ||
+              data.message.toLowerCase().includes("match")))
+        ) {
           return {
             isMatch: false,
             score: 0,
             provider: "cashfree",
             status: "FAILED",
-            message: data.message,
-            error: data.message,
+            message: data.message || "Face mismatch",
+            error:
+              "Face mismatch: The photos do not appear to be the same person.",
           };
         }
         // Otherwise, fall back to local comparison
         return this.executeLocalFallback(image1, image2);
       }
 
+      // Check explicit Cashfree face match result (YES / NO)
+      if (data.face_match_result === "NO") {
+        const rawScore = Number(data.face_match_score ?? data.score ?? 0);
+        return {
+          isMatch: false,
+          score: Math.round(rawScore * 100) / 100,
+          provider: "cashfree",
+          status: "SUCCESS",
+          message: "Faces do not match",
+          error:
+            "Face mismatch: The photos do not appear to be the same person.",
+        };
+      }
+
       // Normalize score (handles 0.0 - 1.0 or 0 - 100)
-      const rawScore = Number(data.score ?? data.similarity ?? 0);
+      const rawScore = Number(
+        data.face_match_score ?? data.score ?? data.similarity ?? 0,
+      );
       const normalizedScore = rawScore > 1 ? rawScore / 100 : rawScore;
       const isMatch =
-        data.match_result === "MATCH" || normalizedScore >= this.threshold;
+        data.face_match_result === "YES" ||
+        data.match_result === "MATCH" ||
+        normalizedScore >= this.threshold;
 
       console.log(
         `✅ [CashfreeService] Face Match Successful -> Match: ${isMatch}, Score: ${(
@@ -154,7 +181,10 @@ export class CashfreeService {
       message: localResult.isMatch
         ? "Faces matched via local biometric engine"
         : localResult.error || "Faces do not match",
-      error: localResult.isMatch ? undefined : localResult.error,
+      error: localResult.isMatch
+        ? undefined
+        : localResult.error ||
+        "Face mismatch: The photos do not appear to be the same person.",
     };
   }
 }

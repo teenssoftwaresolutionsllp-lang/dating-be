@@ -64,7 +64,11 @@ class ProfileService {
     // Case 1: Remote HTTP/HTTPS URL
     if (ref.startsWith("http://") || ref.startsWith("https://")) {
       try {
-        const response = await fetch(ref);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
+        const response = await fetch(ref, { signal: controller.signal });
+        clearTimeout(timeoutId);
+
         if (response.ok) {
           const arrayBuffer = await response.arrayBuffer();
           const buffer = Buffer.from(arrayBuffer);
@@ -448,7 +452,7 @@ class ProfileService {
       if (!kycFaceMatch.isMatch) {
         const error = new Error(
           kycFaceMatch.error ||
-            "Biometric mismatch: The face on your live selfie does not match the photo on your Government ID.",
+          "Biometric mismatch: The face on your live selfie does not match the photo on your Government ID.",
         ) as AppError;
         error.statusCode = 400;
         error.code = "KYC_FACE_MISMATCH";
@@ -585,8 +589,15 @@ class ProfileService {
     }
 
     let selfieBuffer: Buffer | undefined;
+    let biometricVerified = false;
+
     if (isPrimary) {
-      selfieBuffer = await this.getKycSelfieBuffer(userId);
+      try {
+        selfieBuffer = await this.getKycSelfieBuffer(userId);
+      } catch (selfieErr) {
+        console.warn("[validateSinglePhoto] Failed to load KYC selfie:", selfieErr);
+      }
+
       console.log(
         `[validateSinglePhoto] User ${userId}, isPrimary=${isPrimary}, selfieBuffer available: ${Boolean(selfieBuffer)}`,
       );
@@ -602,19 +613,21 @@ class ProfileService {
         if (!profileFaceMatch.isMatch) {
           const error = new Error(
             profileFaceMatch.error ||
-              "Face mismatch: Your main profile photo does not appear to match your verified selfie. Please upload a clear photo of yourself.",
+            "Face mismatch: Your main profile photo does not appear to match your verified selfie. Please upload a clear photo of yourself.",
           ) as AppError;
           error.statusCode = 400;
           error.code = "FACE_MISMATCH";
           throw error;
         }
+        biometricVerified = true;
       }
     }
 
+    // Skip redundant compareFaces decode inside validateProfilePhoto if CashfreeService already verified it
     const validation = validateProfilePhoto(
       file.buffer,
       file.originalName,
-      selfieBuffer,
+      biometricVerified ? undefined : selfieBuffer,
       isPrimary,
     );
 

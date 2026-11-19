@@ -142,6 +142,47 @@ export function decodeImagePixels(buffer: Buffer): {
 }
 
 /**
+ * Fast JPEG header parser: extracts width & height from SOF markers without decoding pixels.
+ * Uses 0 bytes memory and runs in microseconds, eliminating OOM crashes on Render.
+ */
+function parseJpegDimensionsFast(buffer: Buffer): { width: number; height: number } | null {
+  try {
+    let offset = 2;
+    while (offset < buffer.length - 8) {
+      if (buffer[offset] !== 0xff) {
+        offset++;
+        continue;
+      }
+      const marker = buffer[offset + 1];
+      // SOF0 (0xC0), SOF1 (0xC1), SOF2 (0xC2) contain baseline / progressive dimensions
+      if (
+        (marker >= 0xc0 && marker <= 0xc3) ||
+        (marker >= 0xc5 && marker <= 0xc7) ||
+        (marker >= 0xc9 && marker <= 0xcb) ||
+        (marker >= 0xcd && marker <= 0xcf)
+      ) {
+        if (offset + 8 < buffer.length) {
+          const height = buffer.readUInt16BE(offset + 5);
+          const width = buffer.readUInt16BE(offset + 7);
+          if (width > 0 && height > 0) {
+            return { width, height };
+          }
+        }
+      }
+      if (offset + 3 < buffer.length) {
+        const length = buffer.readUInt16BE(offset + 2);
+        offset += 2 + length;
+      } else {
+        break;
+      }
+    }
+  } catch {
+    // fallback
+  }
+  return null;
+}
+
+/**
  * Extracts basic image format and dimensions from headers.
  */
 function extractImageDimensions(buffer: Buffer): {
@@ -152,13 +193,12 @@ function extractImageDimensions(buffer: Buffer): {
   if (buffer.length < 24) return null;
 
   // 1. JPEG
-  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
-    try {
-      const decoded = jpeg.decode(buffer, { useTArray: true, formatAsRGBA: false });
-      return { format: "jpeg", width: decoded.width, height: decoded.height };
-    } catch {
-      return { format: "jpeg", width: 600, height: 600 };
+  if (buffer[0] === 0xff && buffer[1] === 0xd8) {
+    const fastDims = parseJpegDimensionsFast(buffer);
+    if (fastDims) {
+      return { format: "jpeg", width: fastDims.width, height: fastDims.height };
     }
+    return { format: "jpeg", width: 800, height: 800 };
   }
 
   // 2. PNG
@@ -487,12 +527,12 @@ export async function recognizeDocumentText(
     normDocType.includes("aadhaar") || normDocType.includes("aadhar")
       ? keywordsByDoc.aadhaar
       : normDocType.includes("pan")
-      ? keywordsByDoc.pan
-      : normDocType.includes("passport")
-      ? keywordsByDoc.passport
-      : normDocType.includes("driving") || normDocType.includes("license") || normDocType.includes("dl")
-      ? keywordsByDoc["driving license"]
-      : generalGovtKeywords;
+        ? keywordsByDoc.pan
+        : normDocType.includes("passport")
+          ? keywordsByDoc.passport
+          : normDocType.includes("driving") || normDocType.includes("license") || normDocType.includes("dl")
+            ? keywordsByDoc["driving license"]
+            : generalGovtKeywords;
 
   const matchedKeywords: string[] = [];
   for (const kw of targetKeywords) {
@@ -828,9 +868,13 @@ export function compareFaces(
   const profileFeatures = extractFaceFeatures(profileBuffer);
 
   if (!selfieFeatures?.hasFace) {
-    // If selfie features could not be extracted from buffer, do not block profile photo
-    console.warn("[compareFaces] Selfie face features could not be extracted from selfie buffer.");
-    return { isMatch: true, similarity: 1.0 };
+    console.warn("[compareFaces] No clear human face detected in reference photo/document.");
+    return {
+      isMatch: false,
+      similarity: 0,
+      error:
+        "Could not detect a clear human face in the reference photo or government ID.",
+    };
   }
 
   if (!profileFeatures?.hasFace) {
@@ -839,7 +883,7 @@ export function compareFaces(
       isMatch: false,
       similarity: 0,
       error:
-        "No human face detected in main profile photo. Please upload a clear photo showing your face.",
+        "No human face detected in photo. Please upload a clear photo showing your face.",
     };
   }
 
@@ -853,7 +897,7 @@ export function compareFaces(
   const dAspect = Math.abs(selfieFeatures.aspectRatio - profileFeatures.aspectRatio);
 
   // 3. Overall Similarity Score (0 to 1)
-  const colorScore = Math.max(0, 1.0 - chrominanceDist / 35.0);
+  const colorScore = Math.max(0, 1.0 - chrominanceDist / 30.0);
   const geomScore = Math.max(0, 1.0 - dAspect / 1.5);
   const totalScore = colorScore * 0.75 + geomScore * 0.25;
 
@@ -861,14 +905,13 @@ export function compareFaces(
     `[compareFaces] Cross-location comparison -> ChrominanceDist: ${chrominanceDist.toFixed(2)}, dAspect: ${dAspect.toFixed(2)}, Similarity: ${(totalScore * 100).toFixed(1)}%`
   );
 
-  // Tolerance: Chrominance distance > 32.0 indicates completely different person / non-face tone.
-  // Values <= 32.0 accommodate indoor vs outdoor lighting, camera white-balance differences, and different shooting locations.
-  if (chrominanceDist > 32.0) {
+  // Tolerance: Chrominance distance > 22.0 or score < 0.55 indicates different individuals!
+  if (chrominanceDist > 22.0 || totalScore < 0.55) {
     return {
       isMatch: false,
       similarity: Math.round(totalScore * 100) / 100,
       error:
-        "Face mismatch: Your main profile photo does not appear to match your verified selfie. Please upload a clear photo of yourself.",
+        "Face mismatch: The photo does not appear to match your verified identity. Please upload a clear photo of yourself.",
     };
   }
 

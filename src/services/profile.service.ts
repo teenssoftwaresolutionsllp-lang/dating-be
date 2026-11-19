@@ -15,6 +15,7 @@ import {
   validateSelfiePhoto,
   validateProfilePhoto,
 } from "../utils/image-validator";
+import { CashfreeService } from "./cashfree.service";
 
 export const ONBOARDING_STEPS = [
   "BASIC_DETAILS",
@@ -436,6 +437,23 @@ class ProfileService {
         error.code = selfieValidation.code || "INVALID_SELFIE";
         throw error;
       }
+
+      // Biometric Triangle Check: Match Government ID Photo against Live Selfie via Cashfree Secure ID
+      const kycFaceMatch = await CashfreeService.matchFaces(
+        documentImage.buffer,
+        selfieImage.buffer,
+        "government_id",
+        "live_selfie",
+      );
+      if (!kycFaceMatch.isMatch) {
+        const error = new Error(
+          kycFaceMatch.error ||
+            "Biometric mismatch: The face on your live selfie does not match the photo on your Government ID.",
+        ) as AppError;
+        error.statusCode = 400;
+        error.code = "KYC_FACE_MISMATCH";
+        throw error;
+      }
     }
 
     let selfieUrl: string | undefined;
@@ -572,6 +590,25 @@ class ProfileService {
       console.log(
         `[validateSinglePhoto] User ${userId}, isPrimary=${isPrimary}, selfieBuffer available: ${Boolean(selfieBuffer)}`,
       );
+
+      // Biometric Triangle Check: Match Main Profile Photo against Verified Selfie via Cashfree Secure ID
+      if (selfieBuffer) {
+        const profileFaceMatch = await CashfreeService.matchFaces(
+          selfieBuffer,
+          file.buffer,
+          "verified_selfie",
+          "main_profile_photo",
+        );
+        if (!profileFaceMatch.isMatch) {
+          const error = new Error(
+            profileFaceMatch.error ||
+              "Face mismatch: Your main profile photo does not appear to match your verified selfie. Please upload a clear photo of yourself.",
+          ) as AppError;
+          error.statusCode = 400;
+          error.code = "FACE_MISMATCH";
+          throw error;
+        }
+      }
     }
 
     const validation = validateProfilePhoto(

@@ -87,6 +87,27 @@ export class CashfreeService {
       clearTimeout(timeoutId);
 
       const data = (await response.json()) as any;
+      console.log("📡 [CashfreeService] Response received:", JSON.stringify(data));
+
+      const output = data?.output || data;
+      const faceMatchResult =
+        output?.face_match_result ??
+        data?.face_match_result ??
+        (output?.match_result === "MATCH"
+          ? "YES"
+          : output?.match_result === "MISMATCH"
+            ? "NO"
+            : undefined);
+
+      const rawScore = Number(
+        output?.face_match_score ??
+        output?.score ??
+        output?.similarity ??
+        data?.face_match_score ??
+        data?.score ??
+        0,
+      );
+      const normalizedScore = rawScore > 1 ? rawScore / 100 : rawScore;
 
       if (!response.ok || data.status === "FAILED") {
         console.warn(
@@ -95,10 +116,11 @@ export class CashfreeService {
         );
         // If Cashfree returned an explicit rejection (no face detected or mismatch)
         if (
-          data?.face_match_result === "NO" ||
+          faceMatchResult === "NO" ||
           (data?.message &&
             (data.message.toLowerCase().includes("face") ||
-              data.message.toLowerCase().includes("match")))
+              data.message.toLowerCase().includes("match") ||
+              data.message.toLowerCase().includes("mismatch")))
         ) {
           return {
             isMatch: false,
@@ -115,27 +137,21 @@ export class CashfreeService {
       }
 
       // Check explicit Cashfree face match result (YES / NO)
-      if (data.face_match_result === "NO") {
-        const rawScore = Number(data.face_match_score ?? data.score ?? 0);
+      if (faceMatchResult === "NO" || normalizedScore < this.threshold) {
         return {
           isMatch: false,
-          score: Math.round(rawScore * 100) / 100,
+          score: Math.round(normalizedScore * 100) / 100,
           provider: "cashfree",
           status: "SUCCESS",
-          message: "Faces do not match",
+          message: output?.reason || data?.message || "Faces do not match",
           error:
             "Face mismatch: The photos do not appear to be the same person.",
         };
       }
 
-      // Normalize score (handles 0.0 - 1.0 or 0 - 100)
-      const rawScore = Number(
-        data.face_match_score ?? data.score ?? data.similarity ?? 0,
-      );
-      const normalizedScore = rawScore > 1 ? rawScore / 100 : rawScore;
       const isMatch =
-        data.face_match_result === "YES" ||
-        data.match_result === "MATCH" ||
+        faceMatchResult === "YES" ||
+        output?.match_result === "MATCH" ||
         normalizedScore >= this.threshold;
 
       console.log(

@@ -15,7 +15,7 @@ import {
   validateSelfiePhoto,
   validateProfilePhoto,
 } from "../utils/image-validator";
-import { CashfreeService } from "./cashfree.service";
+import { RekognitionService } from "./rekognition.service";
 
 export const ONBOARDING_STEPS = [
   "BASIC_DETAILS",
@@ -145,11 +145,9 @@ class ProfileService {
       }
 
       if (isPrimary && selfieBuffer) {
-        const match = await CashfreeService.matchFaces(
+        const match = await RekognitionService.compareFaces(
           selfieBuffer,
           file.buffer,
-          "verified_selfie",
-          "main_profile_photo",
         );
         if (!match.isMatch) {
           const error = new Error(
@@ -450,6 +448,18 @@ class ProfileService {
       throw error;
     }
 
+    // 1. Verify Document Type via Cloud OCR (Catches PAN card uploaded when Aadhaar selected)
+    const docCheck = await RekognitionService.verifyDocumentType(
+      documentImage.buffer,
+      documentType,
+    );
+    if (!docCheck.isValidDocument) {
+      const error = new Error(docCheck.error) as AppError;
+      error.statusCode = 400;
+      error.code = "DOCUMENT_TYPE_MISMATCH";
+      throw error;
+    }
+
     let kycFaceMatch: any;
 
     // Validate Selfie photo if provided
@@ -467,12 +477,10 @@ class ProfileService {
         throw error;
       }
 
-      // Biometric Triangle Check: Match Government ID Photo against Live Selfie via Cashfree Secure ID
-      kycFaceMatch = await CashfreeService.matchFaces(
+      // 2. Biometric Triangle Check: Match Government ID Photo against Live Selfie via AWS Rekognition
+      kycFaceMatch = await RekognitionService.compareFaces(
         documentImage.buffer,
         selfieImage.buffer,
-        "government_id",
-        "live_selfie",
       );
       if (!kycFaceMatch.isMatch) {
         const error = new Error(
@@ -523,14 +531,11 @@ class ProfileService {
 
       return {
         status: kyc.status,
-        verifiedBy:
-          kycFaceMatch?.provider === "cashfree"
-            ? "Cashfree Secure ID (Cloud)"
-            : "Biometric Engine",
-        matchScore: kycFaceMatch
-          ? `${Math.round(kycFaceMatch.score * 100)}%`
-          : "100%",
-        message: kycFaceMatch?.message || "KYC verified successfully",
+        verifiedBy: "AWS Rekognition (AI Cloud)",
+        matchScore: kycFaceMatch ? `${kycFaceMatch.similarity}%` : "100%",
+        message: kycFaceMatch
+          ? `Verified by AWS Rekognition (${kycFaceMatch.similarity}% match)`
+          : "KYC verified successfully",
       };
     } catch (error) {
       try {
@@ -637,13 +642,11 @@ class ProfileService {
         `[validateSinglePhoto] User ${userId}, isPrimary=${isPrimary}, selfieBuffer available: ${Boolean(selfieBuffer)}`,
       );
 
-      // Biometric Triangle Check: Match Main Profile Photo against Verified Selfie via Cashfree Secure ID
+      // Biometric Triangle Check: Match Main Profile Photo against Verified Selfie via AWS Rekognition
       if (selfieBuffer) {
-        const profileFaceMatch = await CashfreeService.matchFaces(
+        const profileFaceMatch = await RekognitionService.compareFaces(
           selfieBuffer,
           file.buffer,
-          "verified_selfie",
-          "main_profile_photo",
         );
         if (!profileFaceMatch.isMatch) {
           const error = new Error(

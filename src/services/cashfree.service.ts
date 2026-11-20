@@ -1,10 +1,9 @@
-import { compareFaces } from "../utils/image-validator";
-
 export interface FaceMatchResult {
   isMatch: boolean;
   score: number;
-  provider: "cashfree" | "local_fallback";
+  provider: "cashfree";
   status: "SUCCESS" | "FAILED";
+  referenceId?: string;
   message?: string;
   error?: string;
 }
@@ -35,11 +34,10 @@ export class CashfreeService {
   }
 
   /**
-   * Compare two face images using Cashfree Secure ID Face Match API.
-   * If Cashfree is unavailable, unconfigured, or times out, seamlessly falls back
-   * to our local biometric face comparison engine.
+   * Compare two face images strictly using Cashfree Secure ID Face Match API.
+   * Pure cloud biometric verification — zero local heuristics or fallbacks.
    *
-   * @param image1 Primary reference photo (e.g. Aadhaar Photo or Verified Selfie)
+   * @param image1 Primary reference photo (e.g. Aadhaar/PAN Card Photo or Verified Selfie)
    * @param image2 Target photo (e.g. Live Camera Selfie or Main Dating Profile Photo)
    */
   public static async matchFaces(
@@ -48,19 +46,21 @@ export class CashfreeService {
     label1: string = "reference_face",
     label2: string = "target_face",
   ): Promise<FaceMatchResult> {
-    // 1. If Cashfree credentials are missing, execute local fallback
     if (!this.isConfigured()) {
-      console.warn(
-        "⚠️ [CashfreeService] Credentials not found; using local biometric engine.",
-      );
-      return this.executeLocalFallback(image1, image2);
+      return {
+        isMatch: false,
+        score: 0,
+        provider: "cashfree",
+        status: "FAILED",
+        error:
+          "Cashfree credentials missing. Please set CASHFREE_CLIENT_ID and CASHFREE_CLIENT_SECRET in Render Environment.",
+      };
     }
 
     try {
       const url = `${this.baseUrl}/face-match`;
       const verificationId = `cf_fm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
-      // Build multipart/form-data payload with image blobs
       const formData = new FormData();
       formData.append("verification_id", verificationId);
 
@@ -72,7 +72,7 @@ export class CashfreeService {
       formData.append("threshold", String(this.threshold));
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
 
       const response = await fetch(url, {
         method: "POST",
@@ -87,7 +87,25 @@ export class CashfreeService {
       clearTimeout(timeoutId);
 
       const data = (await response.json()) as any;
-      console.log("📡 [CashfreeService] Response received:", JSON.stringify(data));
+      console.log("📡 [Cashfree Secure ID] Raw API Response:", JSON.stringify(data));
+
+      // 1. Check for IP Whitelisting / 2FA / Authentication errors from Cashfree
+      if (
+        data?.code === "ip_validation_failed" ||
+        data?.type === "authentication_error" ||
+        data?.sub_code === "IP_NOT_WHITELISTED"
+      ) {
+        const ipMatch = data.message?.match(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/);
+        const ip = ipMatch ? ipMatch[0] : "74.220.52.132";
+        return {
+          isMatch: false,
+          score: 0,
+          provider: "cashfree",
+          status: "FAILED",
+          message: data.message,
+          error: `Cashfree Security Block: Server IP (${ip}) is not whitelisted. Please add ${ip} to Cashfree Dashboard -> Secure ID -> Two-Factor Authentication -> IP Whitelist.`,
+        };
+      }
 
       const output = data?.output || data;
       const faceMatchResult =
@@ -101,129 +119,71 @@ export class CashfreeService {
 
       const rawScore = Number(
         output?.face_match_score ??
-        output?.score ??
-        output?.similarity ??
-        data?.face_match_score ??
-        data?.score ??
-        0,
+          output?.score ??
+          output?.similarity ??
+          data?.face_match_score ??
+          data?.score ??
+          0,
       );
       const normalizedScore = rawScore > 1 ? rawScore / 100 : rawScore;
 
+      // 2. Handle non-success responses or explicit face detection failures
       if (!response.ok || data.status === "FAILED") {
-        console.warn(
-          "⚠️ [CashfreeService] API returned non-success response:",
-          data,
-        );
-        // If Cashfree returned an explicit rejection (no face detected or mismatch)
-        if (
-          faceMatchResult === "NO" ||
-          (data?.message &&
-            (data.message.toLowerCase().includes("face") ||
-              data.message.toLowerCase().includes("match") ||
-              data.message.toLowerCase().includes("mismatch")))
-        ) {
-          return {
-            isMatch: false,
-            score: 0,
-            provider: "cashfree",
-            status: "FAILED",
-            message: data.message || "Face mismatch",
-            error:
-              "Face mismatch: The photos do not appear to be the same person.",
-          };
-        }
-        // Otherwise, fall back to local comparison
-        return this.executeLocalFallback(image1, image2);
+        console.warn("⚠️ [Cashfree Secure ID] API returned failure response:", data);
+        const errorMsg =
+          data?.message ||
+          output?.reason ||
+          "Face verification failed: Unable to detect matching human faces in the photos.";
+        return {
+          isMatch: false,
+          score: normalizedScore,
+          provider: "cashfree",
+          status: "FAILED",
+          message: errorMsg,
+          error: errorMsg,
+        };
       }
 
-      // Check explicit Cashfree face match result (YES / NO)
+      // 3. Handle explicit face mismatch (result === "NO" or score < threshold)
       if (faceMatchResult === "NO" || normalizedScore < this.threshold) {
         return {
           isMatch: false,
           score: Math.round(normalizedScore * 100) / 100,
           provider: "cashfree",
           status: "SUCCESS",
-          message: output?.reason || data?.message || "Faces do not match",
+          message: "Faces do not match",
           error:
-            "Face mismatch: The photos do not appear to be the same person.",
+            "Biometric Mismatch: The live selfie does not match the photo on your Government ID.",
         };
       }
 
-      // In Cashfree Sandbox, Cashfree returns a static mock match (0.95 / YES) for pipeline testing.
-      // We cross-verify with our biometric engine so that mismatched test photos (e.g. PAN of User A + Selfie of User B)
-      // are strictly caught and rejected even in the sandbox environment!
-      if (this.baseUrl.includes("sandbox")) {
-        const localBiometric = compareFaces(image1, image2);
-        if (!localBiometric.isMatch) {
-          console.warn(
-            `⚠️ [CashfreeService] Cashfree Sandbox returned mock YES (0.95), but real biometric analysis detected a face mismatch! Distance: ${localBiometric.similarity}`,
-          );
-          return {
-            isMatch: false,
-            score: localBiometric.similarity,
-            provider: "cashfree",
-            status: "FAILED",
-            message:
-              "Face mismatch: The live selfie does not match the photo on your Government ID.",
-            error:
-              "Biometric mismatch: The face on your live selfie does not match the photo on your Government ID.",
-          };
-        }
-      }
-
-      const isMatch =
-        faceMatchResult === "YES" ||
-        output?.match_result === "MATCH" ||
-        normalizedScore >= this.threshold;
-
-      const refId = data.ref_id || data.reference_id || verificationId;
+      // 4. Successful match
+      const refId = String(data.ref_id || data.reference_id || verificationId);
       console.log(
-        `✅ [CashfreeService] Face Match Successful -> Match: ${isMatch}, Score: ${(
-          normalizedScore * 100
-        ).toFixed(1)}%, RefID: ${refId}`,
+        `✅ [Cashfree Secure ID] Verified successfully! Score: ${(normalizedScore * 100).toFixed(1)}%, RefID: ${refId}`,
       );
 
       return {
-        isMatch,
+        isMatch: true,
         score: Math.round(normalizedScore * 100) / 100,
         provider: "cashfree",
         status: "SUCCESS",
-        message:
-          `Verified by Cashfree Secure ID (Ref: ${refId})`,
-        error: isMatch
-          ? undefined
-          : "Face mismatch: The photos do not appear to be the same person.",
+        referenceId: refId,
+        message: `Verified by Cashfree Secure ID (Ref: ${refId})`,
       };
     } catch (err: any) {
-      console.warn(
-        "⚠️ [CashfreeService] Request failed or timed out, executing local fallback:",
-        err?.message || err,
-      );
-      return this.executeLocalFallback(image1, image2);
+      console.error("❌ [Cashfree Secure ID] Network or execution error:", err);
+      return {
+        isMatch: false,
+        score: 0,
+        provider: "cashfree",
+        status: "FAILED",
+        error:
+          err?.name === "AbortError"
+            ? "Cashfree Face Match API timed out. Please check server connectivity."
+            : `Cashfree service error: ${err?.message || "Failed to contact Cashfree"}`,
+      };
     }
-  }
-
-  /**
-   * High-accuracy local biometric comparison fallback using lighting-invariant YCbCr metrics.
-   */
-  private static executeLocalFallback(
-    image1: Buffer,
-    image2: Buffer,
-  ): FaceMatchResult {
-    const localResult = compareFaces(image1, image2);
-    return {
-      isMatch: localResult.isMatch,
-      score: localResult.similarity,
-      provider: "local_fallback",
-      status: localResult.isMatch ? "SUCCESS" : "FAILED",
-      message: localResult.isMatch
-        ? "Faces matched via local biometric engine"
-        : localResult.error || "Faces do not match",
-      error: localResult.isMatch
-        ? undefined
-        : localResult.error ||
-        "Face mismatch: The photos do not appear to be the same person.",
-    };
   }
 }
 

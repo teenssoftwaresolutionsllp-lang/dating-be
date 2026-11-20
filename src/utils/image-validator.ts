@@ -1,13 +1,8 @@
 /**
- * Advanced Image Validation & Moderation Engine
- * Uses Computer Vision pixel-level Face & Landmark Detection and
- * Tesseract OCR Document Content Recognition to accurately detect and reject
- * unrelated photos (bags, nature, cars, solid colors, blurry objects, and non-face captures).
+ * Fast & Lightweight Image Validation Engine
+ * Validates image integrity, format, dimensions, and file size.
+ * All biometric face matching and identity checks are handled 100% via Cashfree Secure ID.
  */
-
-import zlib from "node:zlib";
-import jpeg from "jpeg-js";
-import { createWorker, type Worker } from "tesseract.js";
 
 export interface ImageValidationResult {
   isValid: boolean;
@@ -18,13 +13,10 @@ export interface ImageValidationResult {
     width?: number;
     height?: number;
     sizeKb?: number;
-    faceConfidence?: number;
-    recognizedKeywords?: string[];
-    extractedTextSnippet?: string;
   };
 }
 
-const VALID_DOC_TYPES = new Set([
+export const VALID_DOC_TYPES = new Set([
   "aadhaar",
   "aadhaar card",
   "aadhar",
@@ -40,138 +32,13 @@ const VALID_DOC_TYPES = new Set([
   "government id",
 ]);
 
-// Shared Tesseract Worker instance with automatic idle memory cleanup to prevent Render OOM
-let ocrWorker: Worker | null = null;
-let ocrWorkerPromise: Promise<Worker | null> | null = null;
-let ocrIdleTimer: NodeJS.Timeout | null = null;
-
-function scheduleWorkerCleanup() {
-  if (ocrIdleTimer) clearTimeout(ocrIdleTimer);
-  ocrIdleTimer = setTimeout(async () => {
-    if (ocrWorker) {
-      try {
-        console.log("🧹 [OCR Engine] Terminating idle Tesseract worker to free 300MB RAM on Render...");
-        await ocrWorker.terminate();
-      } catch {
-        // ignore
-      }
-      ocrWorker = null;
-      ocrWorkerPromise = null;
-    }
-  }, 15000); // Free memory 15 seconds after OCR finishes
-}
-
-async function getOcrWorker(): Promise<Worker | null> {
-  if (ocrIdleTimer) {
-    clearTimeout(ocrIdleTimer);
-    ocrIdleTimer = null;
-  }
-
-  if (ocrWorker) {
-    scheduleWorkerCleanup();
-    return ocrWorker;
-  }
-  if (ocrWorkerPromise) return ocrWorkerPromise;
-
-  ocrWorkerPromise = (async () => {
-    try {
-      const worker = await createWorker("eng");
-      ocrWorker = worker;
-      scheduleWorkerCleanup();
-      return worker;
-    } catch (err) {
-      console.warn("⚠️ [OCR Engine] Tesseract initialization bypassed:", err);
-      ocrWorkerPromise = null;
-      return null;
-    }
-  })();
-
-  return ocrWorkerPromise;
-}
-
-/**
- * Universal pixel decoder for JPEG and PNG formats with strict memory ceiling (96MB)
- */
-export function decodeImagePixels(buffer: Buffer): {
-  width: number;
-  height: number;
-  data: Uint8Array | Buffer;
-} | null {
-  if (buffer.length < 24) return null;
-
-  // 1. JPEG
-  if (buffer[0] === 0xff && buffer[1] === 0xd8) {
-    try {
-      return jpeg.decode(buffer, { useTArray: true, formatAsRGBA: true, maxMemoryUsageInMB: 96 });
-    } catch {
-      // ignore
-    }
-  }
-
-  // 2. PNG (Magic bytes: 89 50 4E 47)
-  if (
-    buffer[0] === 0x89 &&
-    buffer[1] === 0x50 &&
-    buffer[2] === 0x4e &&
-    buffer[3] === 0x47
-  ) {
-    try {
-      const width = buffer.readUInt32BE(16);
-      const height = buffer.readUInt32BE(20);
-      const bitDepth = buffer.readUInt8(24);
-      const colorType = buffer.readUInt8(25);
-
-      const idatChunks: Buffer[] = [];
-      let offset = 8;
-      while (offset < buffer.length - 8) {
-        const length = buffer.readUInt32BE(offset);
-        const type = buffer.toString("ascii", offset + 4, offset + 8);
-        if (type === "IDAT") {
-          idatChunks.push(buffer.subarray(offset + 8, offset + 8 + length));
-        } else if (type === "IEND") {
-          break;
-        }
-        offset += 12 + length;
-      }
-
-      if (idatChunks.length > 0 && (colorType === 2 || colorType === 6) && bitDepth === 8) {
-        const compressed = Buffer.concat(idatChunks);
-        const decompressed = zlib.inflateSync(compressed);
-        const bytesPerPixel = colorType === 6 ? 4 : 3;
-        const rowStride = 1 + width * bytesPerPixel;
-        const rgbaData = Buffer.alloc(width * height * 4);
-
-        for (let y = 0; y < height; y++) {
-          const rowStart = y * rowStride + 1;
-          for (let x = 0; x < width; x++) {
-            const srcIdx = rowStart + x * bytesPerPixel;
-            const destIdx = (y * width + x) * 4;
-            rgbaData[destIdx] = decompressed[srcIdx];
-            rgbaData[destIdx + 1] = decompressed[srcIdx + 1];
-            rgbaData[destIdx + 2] = decompressed[srcIdx + 2];
-            rgbaData[destIdx + 3] = colorType === 6 ? decompressed[srcIdx + 3] : 255;
-          }
-        }
-        return { width, height, data: rgbaData };
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  // Fallback
-  try {
-    return jpeg.decode(buffer, { useTArray: true, formatAsRGBA: true });
-  } catch {
-    return null;
-  }
-}
-
 /**
  * Fast JPEG header parser: extracts width & height from SOF markers without decoding pixels.
- * Uses 0 bytes memory and runs in microseconds, eliminating OOM crashes on Render.
+ * Uses 0 bytes of RAM and executes in microseconds, preventing any memory leaks on Render.
  */
-function parseJpegDimensionsFast(buffer: Buffer): { width: number; height: number } | null {
+export function parseJpegDimensionsFast(
+  buffer: Buffer,
+): { width: number; height: number } | null {
   try {
     let offset = 2;
     while (offset < buffer.length - 8) {
@@ -180,7 +47,7 @@ function parseJpegDimensionsFast(buffer: Buffer): { width: number; height: numbe
         continue;
       }
       const marker = buffer[offset + 1];
-      // SOF0 (0xC0), SOF1 (0xC1), SOF2 (0xC2) contain baseline / progressive dimensions
+      // SOF markers (0xC0 - 0xC3, 0xC5 - 0xC7, 0xC9 - 0xCB, 0xCD - 0xCF)
       if (
         (marker >= 0xc0 && marker <= 0xc3) ||
         (marker >= 0xc5 && marker <= 0xc7) ||
@@ -211,7 +78,7 @@ function parseJpegDimensionsFast(buffer: Buffer): { width: number; height: numbe
 /**
  * Extracts basic image format and dimensions from headers.
  */
-function extractImageDimensions(buffer: Buffer): {
+export function extractImageDimensions(buffer: Buffer): {
   format: string;
   width: number;
   height: number;
@@ -252,488 +119,37 @@ function extractImageDimensions(buffer: Buffer): {
     buffer[10] === 0x42 &&
     buffer[11] === 0x50
   ) {
-    return { format: "webp", width: 600, height: 600 };
+    return { format: "webp", width: 800, height: 800 };
   }
 
   return null;
 }
 
 /**
- * Computer Vision Pixel-Level Face Detection
- * Analyzes RGB and YCbCr skin chrominance distribution, face oval geometry,
- * and eye/feature contrast to ensure the photo is a real, live human face.
- */
-export function detectFaceInImage(buffer: Buffer): {
-  hasFace: boolean;
-  confidence: number;
-  reason?: string;
-} {
-  const decoded = decodeImagePixels(buffer);
-
-
-  if (!decoded || decoded.width === 0 || decoded.height === 0) {
-    return { hasFace: true, confidence: 0.5 };
-  }
-
-  const { width, height, data } = decoded;
-  const totalPixels = width * height;
-  if (totalPixels === 0) {
-    return { hasFace: false, confidence: 0, reason: "EMPTY_IMAGE" };
-  }
-
-  // Step 1: Scan pixels in YCbCr & RGB color space for human skin tones
-  let skinPixelCount = 0;
-  let centerSkinCount = 0;
-  let darkFeatureCount = 0;
-
-  // Face central region definition (20% to 80% width, 10% to 85% height)
-  const minX = Math.floor(width * 0.15);
-  const maxX = Math.floor(width * 0.85);
-  const minY = Math.floor(height * 0.1);
-  const maxY = Math.floor(height * 0.85);
-
-  const step = Math.max(1, Math.floor(Math.sqrt(totalPixels / 10000)));
-
-  let sampledCount = 0;
-  for (let y = 0; y < height; y += step) {
-    for (let x = 0; x < width; x += step) {
-      const idx = (y * width + x) * 4;
-      const r = data[idx];
-      const g = data[idx + 1];
-      const b = data[idx + 2];
-
-      sampledCount++;
-
-      // YCbCr transformation
-      const yVal = 0.299 * r + 0.587 * g + 0.114 * b;
-      const cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b;
-      const cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
-
-      // Human skin tone classifier rule
-      const isSkin =
-        r > 50 &&
-        g > 30 &&
-        b > 20 &&
-        r > g &&
-        r - g >= 10 &&
-        cb >= 75 &&
-        cb <= 135 &&
-        cr >= 130 &&
-        cr <= 180;
-
-      if (isSkin) {
-        skinPixelCount++;
-        if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
-          centerSkinCount++;
-        }
-      } else if (yVal < 50 && x >= minX && x <= maxX && y >= minY && y <= maxY) {
-        // Dark pixels in the central region (eyes, eyebrows, pupils, hair)
-        darkFeatureCount++;
-      }
-    }
-  }
-
-  const skinRatio = skinPixelCount / sampledCount;
-  const centerSkinRatio = centerSkinCount / sampledCount;
-  const darkFeatureRatio = darkFeatureCount / sampledCount;
-
-  // Check 1: Inanimate objects (bags, shoes, cars, nature, trees, carpets) have near-zero skin ratio
-  // Tolerates portraits where the person is standing at scenic locations (cafe, outdoor landmark)
-  if (skinRatio < 0.035 || centerSkinRatio < 0.02) {
-    return {
-      hasFace: false,
-      confidence: 0,
-      reason:
-        "No human face detected. The photo appears to be an object, background, or lacks a visible face.",
-    };
-  }
-
-  // Check 2: Solid walls, orange objects, or covered camera (skin ratio > 90% with 0 facial features)
-  if (skinRatio > 0.88 && darkFeatureRatio < 0.005) {
-    return {
-      hasFace: false,
-      confidence: 0.1,
-      reason:
-        "Face not detected: The photo is too close, blank, or lacks facial features (eyes/mouth).",
-    };
-  }
-
-  // Face confidence calculation
-  const faceConfidence = Math.min(1.0, centerSkinRatio * 2.5 + darkFeatureRatio * 3);
-  return { hasFace: true, confidence: Math.round(faceConfidence * 100) / 100 };
-}
-
-/**
- * Document OCR & Government ID Keyword Recognition
- */
-export async function recognizeDocumentText(
-  buffer: Buffer,
-  documentType: string
-): Promise<{
-  isValidDocument: boolean;
-  matchedKeywords: string[];
-  snippet: string;
-  error?: string;
-}> {
-  const normDocType = documentType.trim().toLowerCase();
-
-  // Expanded keywords and regex for government ID verification
-  const keywordsByDoc: Record<string, string[]> = {
-    aadhaar: [
-      "aadhaar",
-      "aadhar",
-      "uidai",
-      "unique identification",
-      "government of india",
-      "govt of india",
-      "enrolment",
-      "male",
-      "female",
-      "dob",
-      "birth",
-      "vid",
-      "help@uidai",
-      "resident",
-      "yob",
-      "authority",
-      "mera aadhaar",
-      "1947",
-      "address",
-      "father",
-      "husband",
-      "card",
-      "identity",
-      "india",
-      "unique",
-      "identification",
-      "मेरा",
-      "आधार",
-    ],
-    pan: [
-      "income tax",
-      "income tax department",
-      "permanent account number",
-      "pan",
-      "father",
-      "govt of india",
-      "government of india",
-      "signature",
-      "incometax",
-      "incometaxindia",
-      "department",
-      "income",
-      "tax",
-      "account",
-      "card",
-      "india",
-    ],
-    passport: [
-      "passport",
-      "republic of india",
-      "nationality",
-      "place of birth",
-      "surname",
-      "given name",
-      "passport no",
-      "type",
-      "country code",
-      "date of expiry",
-      "date of issue",
-      "republic",
-      "india",
-    ],
-    "driving license": [
-      "driving licence",
-      "driving license",
-      "licence",
-      "license",
-      "licensing authority",
-      "union of india",
-      "valid till",
-      "dl no",
-      "transport",
-      "motor vehicles",
-      "cov",
-      "non transport",
-      "driving",
-      "motor",
-      "vehicle",
-      "authority",
-      "india",
-    ],
-  };
-
-  const generalGovtKeywords = [
-    "government of india",
-    "govt of india",
-    "republic of india",
-    "identity card",
-    "authority of india",
-    "date of birth",
-    "gender",
-    "name",
-    "father's name",
-    "election commission",
-    "national identity",
-    "india",
-    "government",
-    "govt",
-    "identity",
-    "card",
-    "department",
-  ];
-
-  let extractedText = "";
-  let cleanSnippet = "";
-  let ocrCompleted = false;
-
-  try {
-    const worker = await getOcrWorker();
-    if (worker) {
-      const ocrPromise = worker.recognize(buffer);
-      const timeoutPromise = new Promise<{ data: { text: string } }>((_, reject) =>
-        setTimeout(() => reject(new Error("OCR_TIMEOUT")), 15000)
-      );
-
-      const { data } = await Promise.race([ocrPromise, timeoutPromise]);
-      extractedText = (data.text || "").toLowerCase();
-      cleanSnippet = data.text.replace(/\s+/g, " ").trim().slice(0, 150);
-      ocrCompleted = true;
-    }
-  } catch (err: any) {
-    console.warn("⚠️ [OCR Engine] OCR execution skipped or timed out:", err?.message || err);
-    ocrCompleted = false;
-  }
-
-  // If OCR failed or timed out on cloud server, perform graceful fallback:
-  // Legitimate users with clear card images must never be blocked by server OCR limits!
-  if (!ocrCompleted) {
-    return {
-      isValidDocument: true,
-      matchedKeywords: ["Physical Document Verification Accepted"],
-      snippet: "Document photo accepted for verification",
-    };
-  }
-
-  // Check 1: Reject obvious web application portals / website screenshots
-  const isWebOrApplicationForm =
-    extractedText.includes("save and next") ||
-    extractedText.includes("save & next") ||
-    extractedText.includes("application reference") ||
-    extractedText.includes("application reference number") ||
-    extractedText.includes("my applications") ||
-    extractedText.includes("document advisor") ||
-    extractedText.includes("fill details") ||
-    extractedText.includes("fields marked with") ||
-    extractedText.includes("passport seva") ||
-    extractedText.includes("passportindia.gov.in") ||
-    extractedText.includes("uidai.gov.in") ||
-    extractedText.includes("incometax.gov.in") ||
-    extractedText.includes("parivahan.gov.in") ||
-    extractedText.includes("logout") ||
-    extractedText.includes("log in") ||
-    extractedText.includes("sign in") ||
-    extractedText.includes("court order etc") ||
-    extractedText.includes("forms/services") ||
-    extractedText.includes("http://") ||
-    extractedText.includes("https://");
-
-  if (isWebOrApplicationForm) {
-    return {
-      isValidDocument: false,
-      matchedKeywords: [],
-      snippet: cleanSnippet,
-      error:
-        "Application form / website screen detected: Please upload a photo of your physical Government ID card or Passport booklet, not an online form or screen capture.",
-    };
-  }
-
-  // Check 2: Match document-specific keywords
-  const targetKeywords =
-    normDocType.includes("aadhaar") || normDocType.includes("aadhar")
-      ? keywordsByDoc.aadhaar
-      : normDocType.includes("pan")
-        ? keywordsByDoc.pan
-        : normDocType.includes("passport")
-          ? keywordsByDoc.passport
-          : normDocType.includes("driving") || normDocType.includes("license") || normDocType.includes("dl")
-            ? keywordsByDoc["driving license"]
-            : generalGovtKeywords;
-
-  const matchedKeywords: string[] = [];
-  for (const kw of targetKeywords) {
-    if (extractedText.includes(kw)) {
-      matchedKeywords.push(kw);
-    }
-  }
-
-  // Check 3: Check regex patterns
-  const hasAadhaarPattern = /\b\d{4}\s?\d{4}\s?\d{4}\b/.test(extractedText) || /\b\d{12}\b/.test(extractedText);
-  const hasPanPattern = /[A-Z]{5}[0-9]{4}[A-Z]/i.test(extractedText) || /\b[0-9]{4}[A-Z]\b/i.test(extractedText);
-  const hasPassportPattern = /[A-Z][0-9]{7}/i.test(extractedText);
-  const hasDlPattern = /\b[A-Z]{2}[0-9]{2}[0-9A-Z]{7,12}\b/i.test(extractedText);
-
-  if (hasAadhaarPattern) matchedKeywords.push("12-digit Aadhaar UID");
-  if (hasPanPattern) matchedKeywords.push("Official PAN Format");
-  if (hasPassportPattern) matchedKeywords.push("Passport Number Format");
-  if (hasDlPattern) matchedKeywords.push("Driving License Number Format");
-
-  const hasSpecificIdPattern =
-    hasAadhaarPattern || hasPanPattern || hasPassportPattern || hasDlPattern;
-
-  const hasGovtAuthority =
-    extractedText.includes("government of india") ||
-    extractedText.includes("govt of india") ||
-    extractedText.includes("unique identification") ||
-    extractedText.includes("uidai") ||
-    extractedText.includes("income tax department") ||
-    extractedText.includes("republic of india") ||
-    extractedText.includes("transport department") ||
-    extractedText.includes("union of india") ||
-    extractedText.includes("election commission") ||
-    extractedText.includes("authority") ||
-    extractedText.includes("india");
-
-  // Check 3.5: Strict Document Type Mismatch Verification
-  // Rejects if the user selected Aadhaar but uploaded PAN, or selected PAN but uploaded Aadhaar
-  const isAadhaarExpected =
-    normDocType.includes("aadhaar") || normDocType.includes("aadhar");
-  const isPanExpected = normDocType.includes("pan");
-
-  const hasPanMarkers =
-    hasPanPattern ||
-    extractedText.includes("income tax department") ||
-    extractedText.includes("permanent account number") ||
-    extractedText.includes("incometax") ||
-    extractedText.includes("income tax");
-
-  const hasAadhaarMarkers =
-    hasAadhaarPattern ||
-    extractedText.includes("unique identification") ||
-    extractedText.includes("uidai") ||
-    extractedText.includes("aadhaar") ||
-    extractedText.includes("aadhar") ||
-    extractedText.includes("मेरा आधार");
-
-  if (isAadhaarExpected && hasPanMarkers && !hasAadhaarMarkers) {
-    return {
-      isValidDocument: false,
-      matchedKeywords: ["PAN Card Detected"],
-      snippet: cleanSnippet,
-      error:
-        "Document Mismatch: You selected Aadhaar Card, but uploaded a PAN Card. Please upload your physical Aadhaar Card.",
-    };
-  }
-
-  if (isPanExpected && hasAadhaarMarkers && !hasPanMarkers) {
-    return {
-      isValidDocument: false,
-      matchedKeywords: ["Aadhaar Card Detected"],
-      snippet: cleanSnippet,
-      error:
-        "Document Mismatch: You selected PAN Card, but uploaded an Aadhaar Card. Please upload your physical PAN Card.",
-    };
-  }
-
-  // Check 4: Face check
-  // An ID card has a small face photo printed on it!
-  // Only flag as a selfie if it's overwhelmingly a close-up portrait with NO text extracted at all
-  const faceAnalysis = detectFaceInImage(buffer);
-  const isSelfieWithNoText =
-    faceAnalysis.hasFace &&
-    faceAnalysis.confidence > 0.9 &&
-    extractedText.trim().length < 15 &&
-    !hasGovtAuthority &&
-    !hasSpecificIdPattern;
-
-  if (isSelfieWithNoText) {
-    return {
-      isValidDocument: false,
-      matchedKeywords: [],
-      snippet: cleanSnippet,
-      error:
-        "Portrait/selfie photo detected: Please upload a photo of your physical Government ID card, not a personal photo.",
-    };
-  }
-
-  // Decision Rule:
-  // Valid if:
-  // - Matches ID format regex
-  // - OR Has government authority text or any document keyword
-  // - OR Has readable text of at least 15 characters (indicating an official document with details)
-  const isValid =
-    hasSpecificIdPattern ||
-    hasGovtAuthority ||
-    matchedKeywords.length >= 1 ||
-    extractedText.trim().length >= 15;
-
-  if (isValid) {
-    return {
-      isValidDocument: true,
-      matchedKeywords: matchedKeywords.length > 0 ? matchedKeywords : ["Document Text Verified"],
-      snippet: cleanSnippet,
-    };
-  }
-
-  // If text was extracted but couldn't be definitively classified, accept physical document photo
-  return {
-    isValidDocument: true,
-    matchedKeywords: ["Physical ID Document Accepted"],
-    snippet: cleanSnippet || "Physical ID card photo accepted",
-  };
-}
-
-
-/**
- * Validates Government ID image quality, size, and real OCR document content.
+ * Validates Government ID document photo quality and format.
  */
 export async function validateKycDocument(
   buffer: Buffer,
   originalName: string,
-  documentType: string
+  documentType: string,
 ): Promise<ImageValidationResult> {
-  // 1. Minimum file size (Real document photos are at least 10 KB)
   if (buffer.length < 10 * 1024) {
     return {
       isValid: false,
       error:
-        "Invalid ID Photo: The image resolution or file size is too low. Please upload a clear, high-resolution photo of your government ID.",
+        "The image resolution or file size is too low. Please upload a clear photo of your physical Government ID.",
       code: "INVALID_KYC_RESOLUTION",
     };
   }
 
-  // 2. Maximum file size (15 MB)
   if (buffer.length > 15 * 1024 * 1024) {
     return {
       isValid: false,
-      error: "ID photo exceeds maximum allowed size of 15 MB.",
+      error: "Document photo exceeds maximum allowed size of 15 MB.",
       code: "FILE_TOO_LARGE",
     };
   }
 
-  // 3. Document Type check
-  const normalizedDocType = (documentType || "").trim().toLowerCase();
-  const isMatchingDocType =
-    VALID_DOC_TYPES.has(normalizedDocType) ||
-    normalizedDocType.includes("aadhaar") ||
-    normalizedDocType.includes("aadhar") ||
-    normalizedDocType.includes("pan") ||
-    normalizedDocType.includes("passport") ||
-    normalizedDocType.includes("driving") ||
-    normalizedDocType.includes("license") ||
-    normalizedDocType.includes("dl") ||
-    normalizedDocType.includes("id");
-
-  if (!isMatchingDocType) {
-    return {
-      isValid: false,
-      error:
-        "Invalid document type. Please select a valid ID: Aadhaar Card, PAN Card, Passport, or Driving License.",
-      code: "INVALID_DOC_TYPE",
-    };
-  }
-
-  // 4. Header & Dimension validation
   const dims = extractImageDimensions(buffer);
   if (!dims) {
     return {
@@ -744,24 +160,12 @@ export async function validateKycDocument(
     };
   }
 
-  if (dims.width > 0 && dims.height > 0) {
-    if (dims.width < 150 || dims.height < 100) {
-      return {
-        isValid: false,
-        error:
-          "Photo dimensions too small: Government ID photo must be at least 150x100 pixels for text legibility.",
-        code: "DIMENSIONS_TOO_SMALL",
-      };
-    }
-  }
-
-  // 5. OCR & Document Content Validation
-  const ocrResult = await recognizeDocumentText(buffer, documentType);
-  if (!ocrResult.isValidDocument) {
+  const normDocType = (documentType || "").toLowerCase().trim();
+  if (!VALID_DOC_TYPES.has(normDocType)) {
     return {
       isValid: false,
-      error: ocrResult.error || "Unrelated photo detected: No valid Government ID text found.",
-      code: "NOT_A_GOVERNMENT_ID",
+      error: "Please select a supported Government ID document type.",
+      code: "UNSUPPORTED_DOCUMENT_TYPE",
     };
   }
 
@@ -772,24 +176,22 @@ export async function validateKycDocument(
       width: dims.width,
       height: dims.height,
       sizeKb: Math.round(buffer.length / 1024),
-      recognizedKeywords: ocrResult.matchedKeywords,
-      extractedTextSnippet: ocrResult.snippet,
     },
   };
 }
 
 /**
- * Validates Live Selfie image using Computer Vision Face & Landmark Detection.
+ * Validates Live Selfie image format and quality.
  */
 export function validateSelfiePhoto(
   buffer: Buffer,
-  originalName: string
+  originalName: string,
 ): ImageValidationResult {
   if (buffer.length < 10 * 1024) {
     return {
       isValid: false,
       error:
-        "Selfie quality too low. Please take a clear, well-lit photo of your face using the front camera.",
+        "Selfie quality too low. Please take a clear, well-lit photo using the camera.",
       code: "INVALID_SELFIE_QUALITY",
     };
   }
@@ -812,18 +214,6 @@ export function validateSelfiePhoto(
     };
   }
 
-  // Computer Vision Face Detection
-  const faceResult = detectFaceInImage(buffer);
-  if (!faceResult.hasFace) {
-    return {
-      isValid: false,
-      error:
-        faceResult.reason ||
-        "No human face detected: The image appears to be an object, bag, or background. Please take a clear live selfie showing your face directly in the camera.",
-      code: "NO_FACE_DETECTED",
-    };
-  }
-
   return {
     isValid: true,
     metadata: {
@@ -831,184 +221,22 @@ export function validateSelfiePhoto(
       width: dims.width,
       height: dims.height,
       sizeKb: Math.round(buffer.length / 1024),
-      faceConfidence: faceResult.confidence,
     },
   };
 }
 
 /**
- * Extracts facial feature metrics (skin color YCbCr signature, face oval geometry).
- */
-export interface FaceFeatures {
-  hasFace: boolean;
-  meanCb: number;
-  meanCr: number;
-  meanY: number;
-  aspectRatio: number;
-  faceProportion: number;
-}
-
-export function extractFaceFeatures(buffer: Buffer): FaceFeatures | null {
-  const decoded = decodeImagePixels(buffer);
-  if (!decoded || decoded.width === 0 || decoded.height === 0) return null;
-
-  const { width, height, data } = decoded;
-  const totalPixels = width * height;
-
-  let skinCount = 0;
-  let sumCb = 0;
-  let sumCr = 0;
-  let sumY = 0;
-  let minX = width;
-  let maxX = 0;
-  let minY = height;
-  let maxY = 0;
-
-  const step = Math.max(1, Math.floor(Math.sqrt(totalPixels / 10000)));
-
-  for (let y = 0; y < height; y += step) {
-    for (let x = 0; x < width; x += step) {
-      const idx = (y * width + x) * 4;
-      const r = data[idx];
-      const g = data[idx + 1];
-      const b = data[idx + 2];
-
-      const yVal = 0.299 * r + 0.587 * g + 0.114 * b;
-      const cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b;
-      const cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
-
-      const isSkin =
-        r > 50 &&
-        g > 30 &&
-        b > 20 &&
-        r > g &&
-        r - g >= 10 &&
-        cb >= 75 &&
-        cb <= 135 &&
-        cr >= 130 &&
-        cr <= 180;
-
-      if (isSkin) {
-        skinCount++;
-        sumCb += cb;
-        sumCr += cr;
-        sumY += yVal;
-        if (x < minX) minX = x;
-        if (x > maxX) maxX = x;
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
-      }
-    }
-  }
-
-  if (skinCount < 30) return null;
-
-  const meanCb = sumCb / skinCount;
-  const meanCr = sumCr / skinCount;
-  const meanY = sumY / skinCount;
-
-  const faceWidth = Math.max(1, maxX - minX);
-  const faceHeight = Math.max(1, maxY - minY);
-  const aspectRatio = faceWidth / faceHeight;
-  const faceProportion = (faceWidth * faceHeight) / totalPixels;
-
-  return {
-    hasFace: true,
-    meanCb,
-    meanCr,
-    meanY,
-    aspectRatio,
-    faceProportion,
-  };
-}
-
-/**
- * Biometric Face Comparison Engine: Compares face in profile photo against verified KYC selfie.
- * Uses lighting-invariant YCbCr chrominance metrics to accurately match the same person
- * across different locations, lighting conditions (indoor/outdoor), and camera angles.
- */
-export function compareFaces(
-  selfieBuffer: Buffer,
-  profileBuffer: Buffer
-): { isMatch: boolean; similarity: number; error?: string } {
-  const selfieFeatures = extractFaceFeatures(selfieBuffer);
-  const profileFeatures = extractFaceFeatures(profileBuffer);
-
-  if (!selfieFeatures?.hasFace) {
-    console.warn("[compareFaces] No clear human face detected in reference photo/document.");
-    return {
-      isMatch: false,
-      similarity: 0,
-      error:
-        "Could not detect a clear human face in the reference photo or government ID.",
-    };
-  }
-
-  if (!profileFeatures?.hasFace) {
-    console.warn("[compareFaces] Profile photo has no human face detected.");
-    return {
-      isMatch: false,
-      similarity: 0,
-      error:
-        "No human face detected in photo. Please upload a clear photo showing your face.",
-    };
-  }
-
-  // 1. Calculate Lighting-Invariant Chrominance Distance (Cb-Cr Color Space)
-  // Human skin chrominance (Cb, Cr) represents biological melanin and is invariant to ambient brightness (Y).
-  const dCb = Math.abs(selfieFeatures.meanCb - profileFeatures.meanCb);
-  const dCr = Math.abs(selfieFeatures.meanCr - profileFeatures.meanCr);
-  const chrominanceDist = Math.sqrt(dCb * dCb + dCr * dCr);
-
-  // 2. Calculate Face Aspect Ratio Variance (tolerates different camera portrait distances)
-  const dAspect = Math.abs(selfieFeatures.aspectRatio - profileFeatures.aspectRatio);
-
-  // 3. Overall Similarity Score (0 to 1)
-  const colorScore = Math.max(0, 1.0 - chrominanceDist / 30.0);
-  const geomScore = Math.max(0, 1.0 - dAspect / 1.5);
-  const totalScore = colorScore * 0.75 + geomScore * 0.25;
-
-  console.log(
-    `[compareFaces] Cross-location comparison -> ChrominanceDist: ${chrominanceDist.toFixed(2)}, dAspect: ${dAspect.toFixed(2)}, Similarity: ${(totalScore * 100).toFixed(1)}%`
-  );
-
-  // Tolerance: Chrominance distance > 22.0 or score < 0.55 indicates different individuals!
-  if (chrominanceDist > 22.0 || totalScore < 0.55) {
-    return {
-      isMatch: false,
-      similarity: Math.round(totalScore * 100) / 100,
-      error:
-        "Face mismatch: The photo does not appear to match your verified identity. Please upload a clear photo of yourself.",
-    };
-  }
-
-  return {
-    isMatch: true,
-    similarity: Math.round(totalScore * 100) / 100,
-  };
-}
-
-
-
-
-/**
  * Validates profile photo quality and requirements.
- * - If isPrimary === true (Slot 0 / Main Profile Photo):
- *     Requires human face detection and biometric comparison against verified KYC selfie.
- * - If isPrimary === false (Slots 1, 2, 3 / Remaining Photos):
- *     Allows lifestyle, travel, hobby, and other photos without enforcing face or selfie matching.
  */
 export function validateProfilePhoto(
   buffer: Buffer,
   originalName: string,
-  selfieBuffer?: Buffer,
-  isPrimary: boolean = false
+  isPrimary: boolean = false,
 ): ImageValidationResult {
   if (buffer.length < 5 * 1024) {
     return {
       isValid: false,
-      error:
-        "Photo is too small or low quality. Please select a valid photo.",
+      error: "Photo is too small. Please select a valid photo.",
       code: "INVALID_PHOTO_QUALITY",
     };
   }
@@ -1031,58 +259,15 @@ export function validateProfilePhoto(
     };
   }
 
-  if (dims.width > 0 && dims.height > 0) {
-    if (dims.width < 100 || dims.height < 100) {
-      return {
-        isValid: false,
-        error:
-          "Photo dimensions too small. Photos must be at least 100x100 pixels.",
-        code: "DIMENSIONS_TOO_SMALL",
-      };
-    }
-  }
-
-  // Strictly enforce Face Detection & Selfie Biometric Match ONLY for the Main Profile Photo (Slot 0 / isPrimary = true)
-  if (isPrimary) {
-    // Check 1: Ensure main profile photo has a clear human face (rejecting objects, bags, shoes, cars, etc.)
-    const faceCheck = detectFaceInImage(buffer);
-    if (!faceCheck.hasFace) {
-      return {
-        isValid: false,
-        error:
-          faceCheck.reason ||
-          "No human face detected in main profile photo. Please upload a clear photo showing your face.",
-        code: "NO_FACE_DETECTED",
-      };
-    }
-
-    // Check 2: If a verified KYC selfie is provided, compare faces to ensure it is the same person
-    if (selfieBuffer) {
-      const match = compareFaces(selfieBuffer, buffer);
-      if (!match.isMatch) {
-        return {
-          isValid: false,
-          error:
-            match.error ||
-            "Face mismatch: Your main profile photo must match your verified selfie. Please upload a photo of yourself.",
-          code: "FACE_MISMATCH",
-        };
-      }
-    }
-
+  if (dims.width < 100 || dims.height < 100) {
     return {
-      isValid: true,
-      metadata: {
-        format: dims.format,
-        width: dims.width,
-        height: dims.height,
-        sizeKb: Math.round(buffer.length / 1024),
-        faceConfidence: faceCheck.confidence,
-      },
+      isValid: false,
+      error:
+        "Photo dimensions too small. Photos must be at least 100x100 pixels.",
+      code: "DIMENSIONS_TOO_SMALL",
     };
   }
 
-  // For remaining photos (Slots 1, 2, 3), allow lifestyle/hobby/travel photos without face block
   return {
     isValid: true,
     metadata: {
@@ -1093,4 +278,3 @@ export function validateProfilePhoto(
     },
   };
 }
-

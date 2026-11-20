@@ -126,13 +126,13 @@ class ProfileService {
     const selfieBuffer = await this.getKycSelfieBuffer(userId);
     const existingPhotos = await ProfileRepository.findPhotosByUserId(userId);
 
-    // 2. Strict pre-upload validation: selfie matching strictly for primary photo (Slot 0)
+    // 2. Strict pre-upload validation: selfie matching strictly for primary photo (Slot 0) via Cashfree Secure ID
     for (const [index, file] of files.entries()) {
       const isPrimary = existingPhotos.length === 0 && index === 0;
+
       const validation = validateProfilePhoto(
         file.buffer,
         file.originalname,
-        selfieBuffer,
         isPrimary,
       );
       if (!validation.isValid) {
@@ -142,6 +142,24 @@ class ProfileService {
         error.statusCode = 400;
         error.code = validation.code || "INVALID_PROFILE_PHOTO";
         throw error;
+      }
+
+      if (isPrimary && selfieBuffer) {
+        const match = await CashfreeService.matchFaces(
+          selfieBuffer,
+          file.buffer,
+          "verified_selfie",
+          "main_profile_photo",
+        );
+        if (!match.isMatch) {
+          const error = new Error(
+            match.error ||
+            "Primary profile photo does not match your verified selfie photo.",
+          ) as AppError;
+          error.statusCode = 400;
+          error.code = "PROFILE_PHOTO_FACE_MISMATCH";
+          throw error;
+        }
       }
     }
 
@@ -640,11 +658,9 @@ class ProfileService {
       }
     }
 
-    // Skip redundant compareFaces decode inside validateProfilePhoto if CashfreeService already verified it
     const validation = validateProfilePhoto(
       file.buffer,
       file.originalName,
-      biometricVerified ? undefined : selfieBuffer,
       isPrimary,
     );
 

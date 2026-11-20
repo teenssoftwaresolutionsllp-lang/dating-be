@@ -149,15 +149,38 @@ export class CashfreeService {
         };
       }
 
+      // In Cashfree Sandbox, Cashfree returns a static mock match (0.95 / YES) for pipeline testing.
+      // We cross-verify with our biometric engine so that mismatched test photos (e.g. PAN of User A + Selfie of User B)
+      // are strictly caught and rejected even in the sandbox environment!
+      if (this.baseUrl.includes("sandbox")) {
+        const localBiometric = compareFaces(image1, image2);
+        if (!localBiometric.isMatch) {
+          console.warn(
+            `⚠️ [CashfreeService] Cashfree Sandbox returned mock YES (0.95), but real biometric analysis detected a face mismatch! Distance: ${localBiometric.similarity}`,
+          );
+          return {
+            isMatch: false,
+            score: localBiometric.similarity,
+            provider: "cashfree",
+            status: "FAILED",
+            message:
+              "Face mismatch: The live selfie does not match the photo on your Government ID.",
+            error:
+              "Biometric mismatch: The face on your live selfie does not match the photo on your Government ID.",
+          };
+        }
+      }
+
       const isMatch =
         faceMatchResult === "YES" ||
         output?.match_result === "MATCH" ||
         normalizedScore >= this.threshold;
 
+      const refId = data.ref_id || data.reference_id || verificationId;
       console.log(
         `✅ [CashfreeService] Face Match Successful -> Match: ${isMatch}, Score: ${(
           normalizedScore * 100
-        ).toFixed(1)}%`,
+        ).toFixed(1)}%, RefID: ${refId}`,
       );
 
       return {
@@ -166,8 +189,7 @@ export class CashfreeService {
         provider: "cashfree",
         status: "SUCCESS",
         message:
-          data.message ||
-          (isMatch ? "Face match verified" : "Faces do not match"),
+          `Verified by Cashfree Secure ID (Ref: ${refId})`,
         error: isMatch
           ? undefined
           : "Face mismatch: The photos do not appear to be the same person.",

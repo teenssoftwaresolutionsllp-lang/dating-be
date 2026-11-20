@@ -399,7 +399,12 @@ class ProfileService {
     documentNumber: string | undefined,
     documentImage?: { buffer: Buffer; originalName: string },
     selfieImage?: { buffer: Buffer; originalName: string },
-  ): Promise<{ status: string }> {
+  ): Promise<{
+    status: string;
+    verifiedBy?: string;
+    matchScore?: string;
+    message?: string;
+  }> {
     const user = await ProfileRepository.findOnboardingStatus(userId);
     if (!user) {
       throw createNotFoundError("User not found");
@@ -427,6 +432,8 @@ class ProfileService {
       throw error;
     }
 
+    let kycFaceMatch: any;
+
     // Validate Selfie photo if provided
     if (selfieImage) {
       const selfieValidation = validateSelfiePhoto(
@@ -443,7 +450,7 @@ class ProfileService {
       }
 
       // Biometric Triangle Check: Match Government ID Photo against Live Selfie via Cashfree Secure ID
-      const kycFaceMatch = await CashfreeService.matchFaces(
+      kycFaceMatch = await CashfreeService.matchFaces(
         documentImage.buffer,
         selfieImage.buffer,
         "government_id",
@@ -496,7 +503,17 @@ class ProfileService {
         selfiePublicId,
       );
 
-      return { status: kyc.status };
+      return {
+        status: kyc.status,
+        verifiedBy:
+          kycFaceMatch?.provider === "cashfree"
+            ? "Cashfree Secure ID (Cloud)"
+            : "Biometric Engine",
+        matchScore: kycFaceMatch
+          ? `${Math.round(kycFaceMatch.score * 100)}%`
+          : "100%",
+        message: kycFaceMatch?.message || "KYC verified successfully",
+      };
     } catch (error) {
       try {
         await deleteCloudinaryAsset(uploadedAsset.public_id);

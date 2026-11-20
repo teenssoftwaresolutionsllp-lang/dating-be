@@ -40,18 +40,44 @@ const VALID_DOC_TYPES = new Set([
   "government id",
 ]);
 
-// Shared Tesseract Worker instance for high performance and fast sub-second OCR
+// Shared Tesseract Worker instance with automatic idle memory cleanup to prevent Render OOM
 let ocrWorker: Worker | null = null;
 let ocrWorkerPromise: Promise<Worker | null> | null = null;
+let ocrIdleTimer: NodeJS.Timeout | null = null;
+
+function scheduleWorkerCleanup() {
+  if (ocrIdleTimer) clearTimeout(ocrIdleTimer);
+  ocrIdleTimer = setTimeout(async () => {
+    if (ocrWorker) {
+      try {
+        console.log("🧹 [OCR Engine] Terminating idle Tesseract worker to free 300MB RAM on Render...");
+        await ocrWorker.terminate();
+      } catch {
+        // ignore
+      }
+      ocrWorker = null;
+      ocrWorkerPromise = null;
+    }
+  }, 15000); // Free memory 15 seconds after OCR finishes
+}
 
 async function getOcrWorker(): Promise<Worker | null> {
-  if (ocrWorker) return ocrWorker;
+  if (ocrIdleTimer) {
+    clearTimeout(ocrIdleTimer);
+    ocrIdleTimer = null;
+  }
+
+  if (ocrWorker) {
+    scheduleWorkerCleanup();
+    return ocrWorker;
+  }
   if (ocrWorkerPromise) return ocrWorkerPromise;
 
   ocrWorkerPromise = (async () => {
     try {
       const worker = await createWorker("eng");
       ocrWorker = worker;
+      scheduleWorkerCleanup();
       return worker;
     } catch (err) {
       console.warn("⚠️ [OCR Engine] Tesseract initialization bypassed:", err);
@@ -64,7 +90,7 @@ async function getOcrWorker(): Promise<Worker | null> {
 }
 
 /**
- * Universal pixel decoder for JPEG and PNG formats
+ * Universal pixel decoder for JPEG and PNG formats with strict memory ceiling (96MB)
  */
 export function decodeImagePixels(buffer: Buffer): {
   width: number;
@@ -76,7 +102,7 @@ export function decodeImagePixels(buffer: Buffer): {
   // 1. JPEG
   if (buffer[0] === 0xff && buffer[1] === 0xd8) {
     try {
-      return jpeg.decode(buffer, { useTArray: true, formatAsRGBA: true, maxMemoryUsageInMB: 512 });
+      return jpeg.decode(buffer, { useTArray: true, formatAsRGBA: true, maxMemoryUsageInMB: 96 });
     } catch {
       // ignore
     }
@@ -567,6 +593,47 @@ export async function recognizeDocumentText(
     extractedText.includes("election commission") ||
     extractedText.includes("authority") ||
     extractedText.includes("india");
+
+  // Check 3.5: Strict Document Type Mismatch Verification
+  // Rejects if the user selected Aadhaar but uploaded PAN, or selected PAN but uploaded Aadhaar
+  const isAadhaarExpected =
+    normDocType.includes("aadhaar") || normDocType.includes("aadhar");
+  const isPanExpected = normDocType.includes("pan");
+
+  const hasPanMarkers =
+    hasPanPattern ||
+    extractedText.includes("income tax department") ||
+    extractedText.includes("permanent account number") ||
+    extractedText.includes("incometax") ||
+    extractedText.includes("income tax");
+
+  const hasAadhaarMarkers =
+    hasAadhaarPattern ||
+    extractedText.includes("unique identification") ||
+    extractedText.includes("uidai") ||
+    extractedText.includes("aadhaar") ||
+    extractedText.includes("aadhar") ||
+    extractedText.includes("मेरा आधार");
+
+  if (isAadhaarExpected && hasPanMarkers && !hasAadhaarMarkers) {
+    return {
+      isValidDocument: false,
+      matchedKeywords: ["PAN Card Detected"],
+      snippet: cleanSnippet,
+      error:
+        "Document Mismatch: You selected Aadhaar Card, but uploaded a PAN Card. Please upload your physical Aadhaar Card.",
+    };
+  }
+
+  if (isPanExpected && hasAadhaarMarkers && !hasPanMarkers) {
+    return {
+      isValidDocument: false,
+      matchedKeywords: ["Aadhaar Card Detected"],
+      snippet: cleanSnippet,
+      error:
+        "Document Mismatch: You selected PAN Card, but uploaded an Aadhaar Card. Please upload your physical PAN Card.",
+    };
+  }
 
   // Check 4: Face check
   // An ID card has a small face photo printed on it!

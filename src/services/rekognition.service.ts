@@ -2,6 +2,8 @@ import {
   RekognitionClient,
   CompareFacesCommand,
   DetectTextCommand,
+  DetectLabelsCommand,
+  DetectFacesCommand,
 } from "@aws-sdk/client-rekognition";
 
 export interface FaceComparisonResult {
@@ -15,6 +17,11 @@ export interface DocumentTextCheckResult {
   isValidDocument: boolean;
   detectedType: "AADHAAR" | "PAN" | "UNKNOWN";
   error?: string;
+}
+
+export interface AiDetectionResult {
+  isAiGenerated: boolean;
+  reason?: string;
 }
 
 export class RekognitionService {
@@ -41,7 +48,114 @@ export class RekognitionService {
   }
 
   /**
-   * 1. CLOUD OCR DOCUMENT VERIFICATION
+   * 1. DETECT AI-GENERATED OR SYNTHETIC IMAGES
+   * Scans both image metadata/generator signatures (Midjourney, DALL-E, Stable Diffusion, etc.)
+   * and uses AWS Rekognition scene/concept labels (Digital Art, Illustration, CGI, Anime, Cartoon).
+   */
+  public static async detectAiOrSyntheticImage(
+    imageBuffer: Buffer,
+  ): Promise<AiDetectionResult> {
+    // A. Check for AI generator fingerprints in raw metadata (Instant, 0MB RAM)
+    try {
+      const headerLength = Math.min(imageBuffer.length, 64 * 1024);
+      const footerLength = Math.min(imageBuffer.length, 64 * 1024);
+      const head = imageBuffer.toString("binary", 0, headerLength).toLowerCase();
+      const tail = imageBuffer
+        .toString("binary", Math.max(0, imageBuffer.length - footerLength))
+        .toLowerCase();
+      const combined = head + " " + tail;
+
+      const aiKeywords = [
+        "midjourney",
+        "dall-e",
+        "dalle",
+        "stable diffusion",
+        "stablediffusion",
+        "comfyui",
+        "automatic1111",
+        "novelai",
+        "leonardo.ai",
+        "leonardo ai",
+        "bing image creator",
+        "adobe firefly",
+        "c2pa.actions.c2pa.created.generative",
+        "c2pa",
+        "flux.1",
+        "black forest labs",
+        "civitai",
+        "faceapp",
+        "negative prompt:",
+      ];
+
+      for (const kw of aiKeywords) {
+        if (combined.includes(kw)) {
+          console.warn(`⚠️ [AI Detection] Found generator keyword in metadata: "${kw}"`);
+          return {
+            isAiGenerated: true,
+            reason:
+              "AI-generated or synthetic images are not supported. Please upload a real, genuine photo of yourself.",
+          };
+        }
+      }
+    } catch {
+      // Continue to cloud inspection
+    }
+
+    if (!this.isConfigured()) {
+      return { isAiGenerated: false };
+    }
+
+    // B. Check with AWS Rekognition DetectLabels (Cloud AI inspection)
+    try {
+      const command = new DetectLabelsCommand({
+        Image: { Bytes: imageBuffer },
+        MaxLabels: 20,
+        MinConfidence: 75,
+      });
+
+      const response = await this.client.send(command);
+      const labels = response.Labels || [];
+
+      const syntheticLabels = new Set([
+        "digital art",
+        "illustration",
+        "drawing",
+        "cartoon",
+        "anime",
+        "cgi",
+        "animation",
+        "animated",
+        "graphic novel",
+        "artificial intelligence",
+        "avatar",
+        "sketch",
+        "clip art",
+        "painting",
+      ]);
+
+      for (const label of labels) {
+        const name = (label.Name || "").toLowerCase();
+        const conf = label.Confidence || 0;
+        if (syntheticLabels.has(name) && conf >= 75) {
+          console.warn(
+            `⚠️ [AI Detection] AWS flagged synthetic/non-photographic label: "${label.Name}" (${conf.toFixed(1)}%)`,
+          );
+          return {
+            isAiGenerated: true,
+            reason:
+              "AI-generated or synthetic images are not supported. Please upload a real, genuine photo of yourself.",
+          };
+        }
+      }
+    } catch (err: any) {
+      console.warn("⚠️ [AWS Rekognition] DetectLabels warning:", err?.message || err);
+    }
+
+    return { isAiGenerated: false };
+  }
+
+  /**
+   * 2. CLOUD OCR DOCUMENT VERIFICATION
    * Uses AWS Rekognition Text Detection in the cloud to accurately identify
    * if the uploaded document is an Aadhaar Card, PAN Card, or a mismatched card.
    * Runs in AWS Cloud (0MB RAM on Render, executes in ~250ms).
@@ -118,20 +232,22 @@ export class RekognitionService {
       };
     } catch (err: any) {
       console.warn("⚠️ [AWS Rekognition] Text detection error:", err?.message || err);
-      // Soft-fallback if document text is slightly blurry but face can still be matched
       return { isValidDocument: true, detectedType: "UNKNOWN" };
     }
   }
 
   /**
-   * 2. BIOMETRIC FACE MATCH
-   * Compares the small printed face on the Aadhaar/Government ID card with the Live Selfie.
-   * AWS Rekognition automatically detects, crops, and compares the facial geometry.
+   * 3. BIOMETRIC FACE MATCH
+   * Compares two human face photos using AWS Rekognition.
+   * Can be used for:
+   *  - KYC: Aadhaar card photo vs Live Camera Selfie (context = 'kyc')
+   *  - Profile Photo: Verified KYC Selfie vs Main Profile Photo (context = 'main_profile')
    */
   public static async compareFaces(
     sourceImage: Buffer, // Government ID or Verified Selfie
     targetImage: Buffer, // Live Camera Selfie or Profile Photo
     customThreshold?: number,
+    context: "kyc" | "main_profile" = "kyc",
   ): Promise<FaceComparisonResult> {
     if (!this.isConfigured()) {
       return {
@@ -159,7 +275,7 @@ export class RekognitionService {
       if (match && match.Similarity && match.Similarity >= minSimilarity) {
         const score = Math.round(match.Similarity * 10) / 10;
         console.log(
-          `✅ [AWS Rekognition] Biometric Face Match Verified! Similarity: ${score}% (Threshold: ${minSimilarity}%)`,
+          `✅ [AWS Rekognition] Biometric Face Match Verified! Similarity: ${score}% (Threshold: ${minSimilarity}%, Context: ${context})`,
         );
         return {
           isMatch: true,
@@ -170,14 +286,19 @@ export class RekognitionService {
 
       // 2. Different faces detected
       console.warn(
-        `⚠️ [AWS Rekognition] Faces do not match! Matches count: ${response.FaceMatches?.length || 0}, Unmatched: ${response.UnmatchedFaces?.length || 0}`,
+        `⚠️ [AWS Rekognition] Faces do not match! Matches count: ${response.FaceMatches?.length || 0}, Unmatched: ${response.UnmatchedFaces?.length || 0}, Context: ${context}`,
       );
+
+      const mismatchError =
+        context === "main_profile"
+          ? "Main profile photo does not match your verified selfie. Please upload a clear photo of yourself."
+          : "Biometric Mismatch: The live selfie does not match the photo on your Government ID. Please upload your own documents.";
+
       return {
         isMatch: false,
         similarity: 0,
         provider: "aws_rekognition",
-        error:
-          "Biometric Mismatch: The live selfie does not match the photo on your Government ID. Please upload your own documents.",
+        error: mismatchError,
       };
     } catch (err: any) {
       console.error("❌ [AWS Rekognition] Face Match Error:", err);

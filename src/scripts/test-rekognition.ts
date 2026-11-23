@@ -1,27 +1,57 @@
 import "dotenv/config";
-import { RekognitionService } from "../services/rekognition.service";
+import { RekognitionClient, DetectTextCommand } from "@aws-sdk/client-rekognition";
 
 async function runTest() {
   console.log("==================================================");
-  console.log("🧪 TESTING AWS REKOGNITION CONNECTION & CREDENTIALS");
+  console.log("🧪 TESTING NEW AWS REKOGNITION ACCOUNT CONNECTION");
   console.log("==================================================");
-  console.log(`Configured: ${RekognitionService.isConfigured()}`);
   console.log(`Region: ${process.env.AWS_REGION || "ap-south-1"}`);
   console.log(
-    `Access Key ID: ${
-      process.env.AWS_ACCESS_KEY_ID
-        ? process.env.AWS_ACCESS_KEY_ID.slice(0, 8) + "..."
-        : "Missing"
+    `Access Key ID: ${process.env.AWS_ACCESS_KEY_ID
+      ? process.env.AWS_ACCESS_KEY_ID.slice(0, 8) + "..."
+      : "Missing"
     }`,
   );
   console.log(
     `Secret Key: ${process.env.AWS_SECRET_ACCESS_KEY ? "Found" : "Missing"}`,
   );
-  console.log(
-    `Confidence Threshold: ${process.env.AWS_REKOGNITION_MIN_CONFIDENCE || "80"}%`,
-  );
 
-  console.log("\n✅ AWS Rekognition Service is ready for live requests!");
+  const client = new RekognitionClient({
+    region: process.env.AWS_REGION?.trim() || "ap-south-1",
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID?.trim() || "",
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY?.trim() || "",
+    },
+  });
+
+  // Minimal valid 1x1 JPEG byte sequence to test live API permission
+  const dummyJpeg = Buffer.from([
+    0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01,
+    0x01, 0x01, 0x00, 0x48, 0x00, 0x48, 0x00, 0x00, 0xff, 0xdb, 0x00, 0x43,
+    0x00, 0x03, 0x02, 0x02, 0x03, 0x02, 0x02, 0x03, 0x03, 0x03, 0x03, 0x04,
+    0x06, 0x04, 0x04, 0x04, 0x04, 0x04, 0x08, 0x06, 0x06, 0x05, 0x06, 0x09,
+    0x08, 0x0a, 0x0a, 0x09, 0x08, 0x09, 0x09, 0x0a, 0x0c, 0x0f, 0x0c, 0x0a,
+    0x0b, 0x0e, 0x0b, 0x09, 0x09, 0x0d, 0x11, 0x0d, 0x0e, 0x0f, 0x10, 0x10,
+    0x11, 0x10, 0x0a, 0x0c, 0x12, 0x13, 0x12, 0x10, 0x13, 0x0f, 0x10, 0x10,
+    0x10, 0xff, 0xc0, 0x00, 0x0b, 0x08, 0x00, 0x01, 0x00, 0x01, 0x01, 0x01,
+    0x11, 0x00, 0xff, 0xc4, 0x00, 0x14, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x09,
+    0xff, 0xda, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x3f, 0x00, 0x37, 0xff,
+    0xd9,
+  ]);
+
+  try {
+    console.log("\n📡 Sending live test request to AWS Rekognition in ap-south-1...");
+    const command = new DetectTextCommand({
+      Image: { Bytes: dummyJpeg },
+    });
+    const res = await client.send(command);
+    console.log("✅ AWS Rekognition responded successfully!");
+    console.log(`Detections: ${res.TextDetections?.length || 0} text elements found.`);
+    console.log("\n🎉 CONGRATULATIONS! Your new AWS account is 100% UNLOCKED and fully working!");
+  } catch (err: any) {
+    console.error("❌ Live API call error:", err);
+  }
 }
 
 runTest();

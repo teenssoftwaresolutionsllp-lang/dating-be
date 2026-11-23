@@ -126,9 +126,21 @@ class ProfileService {
     const selfieBuffer = await this.getKycSelfieBuffer(userId);
     const existingPhotos = await ProfileRepository.findPhotosByUserId(userId);
 
-    // 2. Strict pre-upload validation: selfie matching strictly for primary photo (Slot 0) via Cashfree Secure ID
+    // 2. Strict pre-upload validation: AI-generation check & selfie matching for primary photo (Slot 0)
     for (const [index, file] of files.entries()) {
       const isPrimary = existingPhotos.length === 0 && index === 0;
+
+      // Check if photo is AI generated / synthetic
+      const aiCheck = await RekognitionService.detectAiOrSyntheticImage(file.buffer);
+      if (aiCheck.isAiGenerated) {
+        const error = new Error(
+          aiCheck.reason ||
+          "AI-generated or synthetic images are not supported. Please upload a real, genuine photo of yourself.",
+        ) as AppError;
+        error.statusCode = 400;
+        error.code = "AI_GENERATED_IMAGE_NOT_SUPPORTED";
+        throw error;
+      }
 
       const validation = validateProfilePhoto(
         file.buffer,
@@ -148,14 +160,16 @@ class ProfileService {
         const match = await RekognitionService.compareFaces(
           selfieBuffer,
           file.buffer,
+          undefined,
+          "main_profile",
         );
         if (!match.isMatch) {
           const error = new Error(
             match.error ||
-            "Primary profile photo does not match your verified selfie photo.",
+            "Main profile photo does not match your verified selfie. Please upload a clear photo of yourself.",
           ) as AppError;
           error.statusCode = 400;
-          error.code = "PROFILE_PHOTO_FACE_MISMATCH";
+          error.code = "MAIN_PROFILE_MISMATCH";
           throw error;
         }
       }
@@ -477,10 +491,25 @@ class ProfileService {
         throw error;
       }
 
+      // Check if selfie is an AI-generated or synthetic image
+      const selfieAi = await RekognitionService.detectAiOrSyntheticImage(
+        selfieImage.buffer,
+      );
+      if (selfieAi.isAiGenerated) {
+        const error = new Error(
+          "AI-generated or synthetic images are not supported. Please take a live camera selfie.",
+        ) as AppError;
+        error.statusCode = 400;
+        error.code = "AI_GENERATED_IMAGE_NOT_SUPPORTED";
+        throw error;
+      }
+
       // 2. Biometric Triangle Check: Match Government ID Photo against Live Selfie via AWS Rekognition
       kycFaceMatch = await RekognitionService.compareFaces(
         documentImage.buffer,
         selfieImage.buffer,
+        undefined,
+        "kyc",
       );
       if (!kycFaceMatch.isMatch) {
         const error = new Error(
@@ -628,6 +657,18 @@ class ProfileService {
       throw error;
     }
 
+    // Check if photo is AI generated / synthetic
+    const aiCheck = await RekognitionService.detectAiOrSyntheticImage(file.buffer);
+    if (aiCheck.isAiGenerated) {
+      const error = new Error(
+        aiCheck.reason ||
+        "AI-generated or synthetic images are not supported. Please upload a real, genuine photo of yourself.",
+      ) as AppError;
+      error.statusCode = 400;
+      error.code = "AI_GENERATED_IMAGE_NOT_SUPPORTED";
+      throw error;
+    }
+
     let selfieBuffer: Buffer | undefined;
     let biometricVerified = false;
 
@@ -647,14 +688,16 @@ class ProfileService {
         const profileFaceMatch = await RekognitionService.compareFaces(
           selfieBuffer,
           file.buffer,
+          undefined,
+          "main_profile",
         );
         if (!profileFaceMatch.isMatch) {
           const error = new Error(
             profileFaceMatch.error ||
-            "Face mismatch: Your main profile photo does not appear to match your verified selfie. Please upload a clear photo of yourself.",
+            "Main profile photo does not match your verified selfie. Please upload a clear photo of yourself.",
           ) as AppError;
           error.statusCode = 400;
-          error.code = "FACE_MISMATCH";
+          error.code = "MAIN_PROFILE_MISMATCH";
           throw error;
         }
         biometricVerified = true;

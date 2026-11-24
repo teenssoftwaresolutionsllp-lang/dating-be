@@ -27,9 +27,6 @@ export const VALID_DOC_TYPES = new Set([
   "driving license",
   "driving licence",
   "dl",
-  "voter id",
-  "national id",
-  "government id",
 ]);
 
 /**
@@ -164,7 +161,8 @@ export async function validateKycDocument(
   if (!VALID_DOC_TYPES.has(normDocType)) {
     return {
       isValid: false,
-      error: "Please select a supported Government ID document type.",
+      error:
+        "Unsupported document type. Only 4 Government IDs are accepted: Aadhaar Card, PAN Card, Passport, or Driving License.",
       code: "UNSUPPORTED_DOCUMENT_TYPE",
     };
   }

@@ -15,7 +15,16 @@ export interface FaceComparisonResult {
 
 export interface DocumentTextCheckResult {
   isValidDocument: boolean;
-  detectedType: "AADHAAR" | "PAN" | "UNKNOWN";
+  detectedType:
+  | "AADHAAR"
+  | "PAN"
+  | "PASSPORT"
+  | "DRIVING_LICENSE"
+  | "VOTER_ID"
+  | "RATION_CARD"
+  | "STUDENT_ID"
+  | "UNSUPPORTED"
+  | "UNKNOWN";
   error?: string;
 }
 
@@ -43,7 +52,7 @@ export class RekognitionService {
   public static isConfigured(): boolean {
     return Boolean(
       process.env.AWS_ACCESS_KEY_ID?.trim() &&
-        process.env.AWS_SECRET_ACCESS_KEY?.trim(),
+      process.env.AWS_SECRET_ACCESS_KEY?.trim(),
     );
   }
 
@@ -157,7 +166,9 @@ export class RekognitionService {
   /**
    * 2. CLOUD OCR DOCUMENT VERIFICATION
    * Uses AWS Rekognition Text Detection in the cloud to accurately identify
-   * if the uploaded document is an Aadhaar Card, PAN Card, or a mismatched card.
+   * if the uploaded document is one of the 4 supported Government IDs:
+   * (Aadhaar Card, PAN Card, Passport, Driving License) and matches the selection.
+   * Rejects any document outside the 4 IDs (Voter ID, Ration card, College ID, etc.)
    * Runs in AWS Cloud (0MB RAM on Render, executes in ~250ms).
    */
   public static async verifyDocumentType(
@@ -179,59 +190,238 @@ export class RekognitionService {
         .join(" ");
 
       console.log(
-        `📄 [AWS Rekognition DetectText] Scanned text snippet (${textLines.length} chars): ${textLines.slice(0, 120)}...`,
+        `📄 [AWS Rekognition DetectText] Scanned text snippet (${textLines.length} chars): ${textLines.slice(0, 160)}...`,
       );
 
-      // Check for PAN Card markers
-      const isPan =
-        textLines.includes("income tax") ||
-        textLines.includes("permanent account") ||
-        textLines.includes("pan number") ||
-        (textLines.includes("govt. of india") &&
-          textLines.includes("father's name"));
-
-      // Check for Aadhaar Card markers
+      // 1. Aadhaar Card markers
       const isAadhaar =
         textLines.includes("aadhaar") ||
         textLines.includes("aadhar") ||
         textLines.includes("unique identification") ||
+        textLines.includes("uidai") ||
         textLines.includes("मेरा आधार") ||
-        /\b\d{4}\s\d{4}\s\d{4}\b/.test(textLines);
+        textLines.includes("enrolment no") ||
+        textLines.includes("enrollment no") ||
+        (/\b\d{4}\s\d{4}\s\d{4}\b/.test(textLines) &&
+          (textLines.includes("government") ||
+            textLines.includes("govt") ||
+            textLines.includes("india") ||
+            textLines.includes("dob") ||
+            textLines.includes("male") ||
+            textLines.includes("female")));
 
+      // 2. PAN Card markers
+      const isPan =
+        textLines.includes("income tax") ||
+        textLines.includes("permanent account") ||
+        textLines.includes("pan number") ||
+        /\b[a-z]{5}\d{4}[a-z]\b/i.test(textLines) ||
+        (textLines.includes("govt. of india") &&
+          textLines.includes("father's name"));
+
+      // 3. Passport markers
+      const isPassport =
+        textLines.includes("passport") ||
+        textLines.includes("passeport") ||
+        textLines.includes("republic of india") ||
+        (textLines.includes("country code") &&
+          textLines.includes("nationality")) ||
+        /p<ind/i.test(textLines) ||
+        /p<[a-z]{3}/i.test(textLines) ||
+        textLines.includes("<<<<<");
+
+      // 4. Driving License markers
+      const isDrivingLicense =
+        textLines.includes("driving licence") ||
+        textLines.includes("driving license") ||
+        textLines.includes("motor vehicles act") ||
+        textLines.includes("transport department") ||
+        textLines.includes("licencing authority") ||
+        textLines.includes("licensing authority") ||
+        textLines.includes("authorisation to drive") ||
+        textLines.includes("driving permit") ||
+        /\bdl\s*no\b/i.test(textLines) ||
+        /\bd\.l\.\s*no\b/i.test(textLines);
+
+      // 5. Unsupported Government ID markers (Voter ID, Ration Card, Student ID, RC, etc.)
+      const isVoterId =
+        textLines.includes("election commission") ||
+        textLines.includes("elector photo identity") ||
+        textLines.includes("voter") ||
+        textLines.includes("निर्वाचन आयोग") ||
+        /\bepic\s*no\b/i.test(textLines) ||
+        /\bepic\b/i.test(textLines);
+
+      const isRationCard =
+        textLines.includes("ration card") ||
+        textLines.includes("खाद्य एवं रसद") ||
+        textLines.includes("food & civil supplies") ||
+        textLines.includes("consumer affairs, food");
+
+      const isStudentOrWorkId =
+        textLines.includes("student id") ||
+        textLines.includes("student identity") ||
+        textLines.includes("hall ticket") ||
+        textLines.includes("college id") ||
+        textLines.includes("employee id") ||
+        textLines.includes("staff id");
+
+      const isVehicleRc =
+        textLines.includes("registration certificate") ||
+        textLines.includes("chassis no") ||
+        textLines.includes("engine no");
+
+      // Resolve the expected document category
       const normExpected = expectedType.toLowerCase().trim();
+      let expectedCategory:
+        | "AADHAAR"
+        | "PAN"
+        | "PASSPORT"
+        | "DRIVING_LICENSE"
+        | "UNKNOWN" = "UNKNOWN";
+      let expectedLabel = expectedType;
 
-      // Case A: User selected Aadhaar, but uploaded a PAN card
       if (normExpected.includes("aadhaar") || normExpected.includes("aadhar")) {
-        if (isPan && !isAadhaar) {
-          console.warn("⚠️ [AWS Rekognition] User selected Aadhaar, but uploaded PAN Card!");
-          return {
-            isValidDocument: false,
-            detectedType: "PAN",
-            error:
-              "Document Mismatch: You selected Aadhaar Card, but uploaded a PAN Card photo. Please upload your physical Aadhaar Card.",
-          };
-        }
+        expectedCategory = "AADHAAR";
+        expectedLabel = "Aadhaar Card";
+      } else if (normExpected.includes("pan")) {
+        expectedCategory = "PAN";
+        expectedLabel = "PAN Card";
+      } else if (normExpected.includes("passport")) {
+        expectedCategory = "PASSPORT";
+        expectedLabel = "Passport";
+      } else if (
+        normExpected.includes("driving") ||
+        normExpected.includes("licen") ||
+        normExpected === "dl"
+      ) {
+        expectedCategory = "DRIVING_LICENSE";
+        expectedLabel = "Driving License";
       }
 
-      // Case B: User selected PAN, but uploaded an Aadhaar card
-      if (normExpected.includes("pan")) {
-        if (isAadhaar && !isPan) {
-          console.warn("⚠️ [AWS Rekognition] User selected PAN, but uploaded Aadhaar Card!");
-          return {
-            isValidDocument: false,
-            detectedType: "AADHAAR",
-            error:
-              "Document Mismatch: You selected PAN Card, but uploaded an Aadhaar Card photo. Please upload your PAN Card.",
-          };
-        }
+      // Check if uploaded document is an explicitly detected UNSUPPORTED ID
+      if (isVoterId) {
+        return {
+          isValidDocument: false,
+          detectedType: "VOTER_ID",
+          error: `Unsupported Document: Voter ID is not supported. Please upload your selected Government ID (${expectedLabel}). Only Aadhaar Card, PAN Card, Passport, or Driving License are accepted.`,
+        };
+      }
+
+      if (isRationCard) {
+        return {
+          isValidDocument: false,
+          detectedType: "RATION_CARD",
+          error: `Unsupported Document: Ration Card is not supported. Please upload your selected Government ID (${expectedLabel}). Only Aadhaar Card, PAN Card, Passport, or Driving License are accepted.`,
+        };
+      }
+
+      if (isStudentOrWorkId) {
+        return {
+          isValidDocument: false,
+          detectedType: "STUDENT_ID",
+          error: `Unsupported Document: Student/Employee ID is not supported. Please upload your selected Government ID (${expectedLabel}). Only Aadhaar Card, PAN Card, Passport, or Driving License are accepted.`,
+        };
+      }
+
+      if (isVehicleRc) {
+        return {
+          isValidDocument: false,
+          detectedType: "UNSUPPORTED",
+          error: `Unsupported Document: Vehicle Registration Certificate (RC) is not supported. Please upload your selected Government ID (${expectedLabel}). Only Aadhaar Card, PAN Card, Passport, or Driving License are accepted.`,
+        };
+      }
+
+      // Determine which of the 4 supported IDs was detected
+      let detectedCategory:
+        | "AADHAAR"
+        | "PAN"
+        | "PASSPORT"
+        | "DRIVING_LICENSE"
+        | null = null;
+      let detectedLabel = "";
+
+      if (isAadhaar) {
+        detectedCategory = "AADHAAR";
+        detectedLabel = "Aadhaar Card";
+      } else if (isPan) {
+        detectedCategory = "PAN";
+        detectedLabel = "PAN Card";
+      } else if (isPassport) {
+        detectedCategory = "PASSPORT";
+        detectedLabel = "Passport";
+      } else if (isDrivingLicense) {
+        detectedCategory = "DRIVING_LICENSE";
+        detectedLabel = "Driving License";
+      }
+
+      // Check for mismatch among the 4 supported IDs
+      if (
+        detectedCategory &&
+        expectedCategory !== "UNKNOWN" &&
+        detectedCategory !== expectedCategory
+      ) {
+        console.warn(
+          `⚠️ [AWS Rekognition] Document Mismatch: User selected ${expectedLabel}, but uploaded ${detectedLabel}!`,
+        );
+        return {
+          isValidDocument: false,
+          detectedType: detectedCategory,
+          error: `Document Mismatch: You selected ${expectedLabel}, but uploaded a ${detectedLabel} photo. Please upload your selected Government ID (${expectedLabel}).`,
+        };
+      }
+
+      // Check if uploaded document matches expected type
+      if (expectedCategory === "AADHAAR" && !isAadhaar) {
+        return {
+          isValidDocument: false,
+          detectedType: "UNKNOWN",
+          error: `Please upload your selected Government ID (Aadhaar Card). Only Aadhaar Card, PAN Card, Passport, or Driving License are supported.`,
+        };
+      }
+
+      if (expectedCategory === "PAN" && !isPan) {
+        return {
+          isValidDocument: false,
+          detectedType: "UNKNOWN",
+          error: `Please upload your selected Government ID (PAN Card). Only Aadhaar Card, PAN Card, Passport, or Driving License are supported.`,
+        };
+      }
+
+      if (expectedCategory === "PASSPORT" && !isPassport) {
+        return {
+          isValidDocument: false,
+          detectedType: "UNKNOWN",
+          error: `Please upload your selected Government ID (Passport). Only Aadhaar Card, PAN Card, Passport, or Driving License are supported.`,
+        };
+      }
+
+      if (expectedCategory === "DRIVING_LICENSE" && !isDrivingLicense) {
+        return {
+          isValidDocument: false,
+          detectedType: "UNKNOWN",
+          error: `Please upload your selected Government ID (Driving License). Only Aadhaar Card, PAN Card, Passport, or Driving License are supported.`,
+        };
+      }
+
+      // If text detections were completely empty / unreadable
+      if (!detectedCategory && textLines.length < 10) {
+        return {
+          isValidDocument: false,
+          detectedType: "UNKNOWN",
+          error: `Unable to read document details. Please upload a clear, legible photo of your selected Government ID (${expectedLabel}).`,
+        };
       }
 
       return {
         isValidDocument: true,
-        detectedType: isAadhaar ? "AADHAAR" : isPan ? "PAN" : "UNKNOWN",
+        detectedType: detectedCategory || "UNKNOWN",
       };
     } catch (err: any) {
-      console.warn("⚠️ [AWS Rekognition] Text detection error:", err?.message || err);
+      console.warn(
+        "⚠️ [AWS Rekognition] Text detection error:",
+        err?.message || err,
+      );
       return { isValidDocument: true, detectedType: "UNKNOWN" };
     }
   }

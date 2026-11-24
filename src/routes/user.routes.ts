@@ -11,8 +11,55 @@ const router = Router();
 router.use(authenticate);
 
 /**
- * POST /api/v1/users/push-token
- * Register or update device push token for the authenticated user
+ * @swagger
+ * tags:
+ *   - name: Users
+ *     description: User device and push notification management
+ */
+
+/**
+ * @swagger
+ * /api/v1/users/push-token:
+ *   post:
+ *     summary: Register or update device push token for the authenticated user
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [pushToken]
+ *             properties:
+ *               pushToken:
+ *                 type: string
+ *                 description: FCM or APNs device push token
+ *                 example: "fcm_token_xyz123"
+ *               platform:
+ *                 type: string
+ *                 enum: [android, ios]
+ *                 default: android
+ *                 example: "android"
+ *     responses:
+ *       200:
+ *         description: Push token registered successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Push token registered successfully"
+ *       400:
+ *         description: pushToken is required
+ *       401:
+ *         description: Unauthorized
  */
 router.post(
   "/push-token",

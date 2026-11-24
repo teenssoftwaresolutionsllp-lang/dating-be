@@ -1,5 +1,6 @@
 import path from "node:path";
 import express, { type Express, type Request, type Response } from "express";
+import swaggerUiExpress from "swagger-ui-express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
@@ -13,6 +14,7 @@ import messageRoutes from "./routes/message.routes";
 import callRoutes from "./routes/call.routes";
 import userRoutes from "./routes/user.routes";
 import { notFoundHandler, errorHandler } from "./middleware/error.middleware";
+import swaggerDocument from "./swagger";
 
 const app: Express = express();
 
@@ -32,13 +34,16 @@ app.use(express.urlencoded({ extended: true }));
 // Serve static uploads
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
+// Swagger UI - served from inline spec (no file scanning)
+app.use("/api-docs", swaggerUiExpress.serve, swaggerUiExpress.setup(swaggerDocument));
+
 // Root & Health Check
 app.get("/", (_req: Request, res: Response) => {
   res.json({
     success: true,
     message: "Dating App Backend is running 🚀",
     version: "1.0.0",
-    docs: "/api/v1/matches",
+    docs: "/api-docs",
   });
 });
 
@@ -50,35 +55,19 @@ app.get(["/api/health", "/api/v1/health"], (_req: Request, res: Response) => {
   });
 });
 
-app.get("/favicon.ico", (_req: Request, res: Response) => {
-  res.status(204).end();
-});
+app.get("/favicon.ico", (_req: Request, res: Response) => res.status(204).end());
 
-// =================================================================
 // API Routes (v1)
-// =================================================================
-// Authentication
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/account", accountRoutes);
-
-// Profile & Onboarding
 app.use("/api/v1/profile", profileRoutes);
 app.use("/api/v1", locationRoutes);
-
-// Matches, Discovery & Swiping
 app.use("/api/v1/matches", matchRoutes);
-
-// Messaging & Chat
 app.use("/api/v1/messages", messageRoutes);
-
-// Real-Time Communication & Calls (Agora RTC)
 app.use("/api/v1/calls", callRoutes);
 app.use("/api/v1/users", userRoutes);
 
-// =================================================================
-// Error Handling
-// =================================================================
-// 404 and Global Error Handling
+// Error handling
 app.use(notFoundHandler);
 app.use(errorHandler);
 

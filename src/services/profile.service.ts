@@ -462,7 +462,20 @@ class ProfileService {
       throw error;
     }
 
-    // 1. Verify Document Type via Cloud OCR (Catches PAN card uploaded when Aadhaar selected)
+    // 1. Check if Government ID is AI-generated
+    const docAi = await RekognitionService.detectAiOrSyntheticImage(
+      documentImage.buffer,
+    );
+    if (docAi.isAiGenerated) {
+      const error = new Error(
+        "AI-generated or synthetic images are not supported. Please upload a real, genuine photo of your Government ID.",
+      ) as AppError;
+      error.statusCode = 400;
+      error.code = "AI_GENERATED_IMAGE_NOT_SUPPORTED";
+      throw error;
+    }
+
+    // 2. Verify Document Type via Cloud OCR (Ensures document is one of 4 allowed IDs and matches selection)
     const docCheck = await RekognitionService.verifyDocumentType(
       documentImage.buffer,
       documentType,
@@ -607,9 +620,34 @@ class ProfileService {
       throw error;
     }
 
+    // 1. Check if Government ID is AI-generated
+    const docAi = await RekognitionService.detectAiOrSyntheticImage(
+      file.buffer,
+    );
+    if (docAi.isAiGenerated) {
+      const error = new Error(
+        "AI-generated or synthetic images are not supported. Please upload a real, genuine photo of your Government ID.",
+      ) as AppError;
+      error.statusCode = 400;
+      error.code = "AI_GENERATED_IMAGE_NOT_SUPPORTED";
+      throw error;
+    }
+
+    // 2. Verify Document Type via Cloud OCR (Ensures document is one of 4 allowed IDs and matches selection)
+    const docCheck = await RekognitionService.verifyDocumentType(
+      file.buffer,
+      documentType,
+    );
+    if (!docCheck.isValidDocument) {
+      const error = new Error(docCheck.error) as AppError;
+      error.statusCode = 400;
+      error.code = "DOCUMENT_TYPE_MISMATCH";
+      throw error;
+    }
+
     return {
       valid: true,
-      message: "Government ID document photo verified successfully.",
+      message: `${documentType} verified successfully.`,
       metadata: validation.metadata,
     };
   }

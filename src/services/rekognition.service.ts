@@ -28,6 +28,14 @@ export interface DocumentTextCheckResult {
   error?: string;
 }
 
+export interface GenderVerificationResult {
+  isMatch: boolean;
+  detectedGender?: "Male" | "Female";
+  confidence?: number;
+  source?: "selfie" | "document_text" | "document_face";
+  error?: string;
+}
+
 export interface AiDetectionResult {
   isAiGenerated: boolean;
   reason?: string;
@@ -507,6 +515,120 @@ export class RekognitionService {
         provider: "aws_rekognition",
         error: `AWS Rekognition error: ${err.message || "Face comparison failed"}`,
       };
+    }
+  }
+
+  /**
+   * 4. GENDER VERIFICATION
+   * Validates that the uploaded live selfie and Government ID match the user's selected profile gender.
+   * Uses both AWS Rekognition facial gender analysis (DetectFaces with Attributes: ALL)
+   * and Government ID document text analysis (DetectText).
+   */
+  public static async verifyGender(
+    selfieBuffer: Buffer,
+    documentBuffer?: Buffer,
+    expectedGender?: string, // e.g. "female" | "male"
+  ): Promise<GenderVerificationResult> {
+    if (!this.isConfigured() || !expectedGender) {
+      return { isMatch: true };
+    }
+
+    const normExpected = expectedGender.toLowerCase().trim();
+    if (normExpected !== "female" && normExpected !== "male") {
+      // Non-binary or other: bypass binary check
+      return { isMatch: true };
+    }
+
+    const expectedLabel = normExpected === "female" ? "Female" : "Male";
+
+    try {
+      // 1. Analyze Live Selfie face for gender
+      const selfieCommand = new DetectFacesCommand({
+        Image: { Bytes: selfieBuffer },
+        Attributes: ["ALL"],
+      });
+      const selfieRes = await this.client.send(selfieCommand);
+      const face = selfieRes.FaceDetails?.[0];
+
+      if (
+        face &&
+        face.Gender &&
+        face.Gender.Value &&
+        (face.Gender.Confidence || 0) >= 85
+      ) {
+        const detectedGender = face.Gender.Value as "Male" | "Female";
+        const confidence = Math.round(face.Gender.Confidence || 0);
+        console.log(
+          `👤 [AWS Rekognition Gender] Live Selfie detected as: ${detectedGender} (${confidence}% confidence). Expected: ${expectedLabel}`,
+        );
+
+        if (detectedGender.toLowerCase() !== normExpected) {
+          console.warn(
+            `⚠️ [Gender Mismatch] User selected ${expectedLabel}, but live selfie detected as ${detectedGender} (${confidence}%)`,
+          );
+          return {
+            isMatch: false,
+            detectedGender,
+            confidence,
+            source: "selfie",
+            error: `Gender Mismatch: You selected ${expectedLabel} in your profile, but uploaded a ${detectedGender} selfie. Please ensure your documents and selfie match your profile details.`,
+          };
+        }
+      }
+
+      // 2. If documentBuffer provided, check Government ID text for gender
+      if (documentBuffer) {
+        const textCommand = new DetectTextCommand({
+          Image: { Bytes: documentBuffer },
+        });
+        const textRes = await this.client.send(textCommand);
+        const textLines = (textRes.TextDetections || [])
+          .map((t) => (t.DetectedText || "").toLowerCase())
+          .join(" ");
+
+        let docGender: "Male" | "Female" | null = null;
+
+        // Check for female markers first (since 'female' contains 'male')
+        if (
+          textLines.includes("female") ||
+          textLines.includes("महिला") ||
+          textLines.includes("sex: f") ||
+          textLines.includes("sex : f") ||
+          textLines.includes("gender: f") ||
+          /\bsex\s+f\b/i.test(textLines)
+        ) {
+          docGender = "Female";
+        } else if (
+          textLines.includes("male") ||
+          textLines.includes("पुरुष") ||
+          textLines.includes("sex: m") ||
+          textLines.includes("sex : m") ||
+          textLines.includes("gender: m") ||
+          /\bsex\s+m\b/i.test(textLines)
+        ) {
+          docGender = "Male";
+        }
+
+        if (docGender && docGender.toLowerCase() !== normExpected) {
+          console.warn(
+            `⚠️ [Gender Mismatch] User selected ${expectedLabel}, but Government ID text indicates ${docGender}`,
+          );
+          return {
+            isMatch: false,
+            detectedGender: docGender,
+            source: "document_text",
+            error: `Gender Mismatch: You selected ${expectedLabel} in your profile, but uploaded a ${docGender} Government ID. Please ensure your documents match your profile details.`,
+          };
+        }
+      }
+
+      return { isMatch: true };
+    } catch (err: any) {
+      console.warn(
+        "⚠️ [AWS Rekognition] Gender verification warning:",
+        err?.message || err,
+      );
+      return { isMatch: true };
     }
   }
 }

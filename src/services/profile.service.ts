@@ -121,14 +121,25 @@ class ProfileService {
     return undefined;
   }
 
-  async addPhotos(userId: string, files: Express.Multer.File[]) {
+  async addPhotos(
+    userId: string,
+    files: Express.Multer.File[],
+    isExplicitPrimary?: boolean,
+  ) {
     // 1. Retrieve user's verified KYC selfie if available for face matching
     const selfieBuffer = await this.getKycSelfieBuffer(userId);
     const existingPhotos = await ProfileRepository.findPhotosByUserId(userId);
 
-    // 2. Strict pre-upload validation: AI-generation check & selfie matching for primary photo (Slot 0)
+    // Primary photo determination:
+    // - User explicitly specifies isPrimary = true (e.g. from the "Me" page avatar change)
+    // - Initial onboarding when user has 0 photos -> index 0 is primary
+    const isUpdatingPrimary = Boolean(
+      isExplicitPrimary || existingPhotos.length === 0,
+    );
+
+    // 2. Strict pre-upload validation: AI-generation check & selfie matching for primary photo
     for (const [index, file] of files.entries()) {
-      const isPrimary = existingPhotos.length === 0 && index === 0;
+      const isPrimary = isUpdatingPrimary && index === 0;
 
       // Check if photo is AI generated / synthetic
       const aiCheck = await RekognitionService.detectAiOrSyntheticImage(file.buffer);
@@ -195,15 +206,21 @@ class ProfileService {
         });
       }
 
+      if (isUpdatingPrimary && existingPhotos.length > 0) {
+        // Demote previous primary photos
+        await ProfileRepository.unsetPrimaryPhotos(userId);
+      }
+
       const photos = [];
       for (const [index, asset] of uploadedAssets.entries()) {
+        const isPhotoPrimary = isUpdatingPrimary && index === 0;
         photos.push(
           await ProfileRepository.createProfilePhoto({
             userId,
             storageKey: asset.publicId,
             url: asset.url,
-            displayOrder: existingPhotos.length + index,
-            isPrimary: existingPhotos.length === 0 && index === 0,
+            displayOrder: isPhotoPrimary ? 0 : existingPhotos.length + index + 1,
+            isPrimary: isPhotoPrimary,
             verificationStatus: "pending",
             mimeType: asset.file.mimetype,
             fileSizeBytes: asset.file.size,
@@ -532,6 +549,32 @@ class ProfileService {
         error.statusCode = 400;
         error.code = "KYC_FACE_MISMATCH";
         throw error;
+      }
+
+      // 3. Gender Verification: Verify user profile gender matches selfie and Gov ID
+      try {
+        const userProfile = await ProfileRepository.findByUserId(userId);
+        if (userProfile && userProfile.gender) {
+          const genderCheck = await RekognitionService.verifyGender(
+            selfieImage.buffer,
+            documentImage.buffer,
+            userProfile.gender,
+          );
+          if (!genderCheck.isMatch) {
+            const error = new Error(
+              genderCheck.error ||
+              `Gender Mismatch: You selected ${userProfile.gender} in your profile, but uploaded a mismatched Government ID or selfie.`,
+            ) as AppError;
+            error.statusCode = 400;
+            error.code = "GENDER_MISMATCH";
+            throw error;
+          }
+        }
+      } catch (genderErr: any) {
+        if (genderErr?.code === "GENDER_MISMATCH") {
+          throw genderErr;
+        }
+        console.warn("⚠️ Gender verification check skipped due to non-blocking error:", genderErr);
       }
     }
 

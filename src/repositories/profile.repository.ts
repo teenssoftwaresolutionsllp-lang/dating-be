@@ -93,6 +93,29 @@ class ProfileRepository {
     return photo;
   }
 
+  async unsetPrimaryPhotos(userId: string): Promise<void> {
+    await db
+      .update(profilePhotos)
+      .set({ isPrimary: false })
+      .where(eq(profilePhotos.userId, userId));
+  }
+
+  async updateProfilePhoto(
+    userId: string,
+    photoId: string,
+    values: Partial<NewProfilePhoto>,
+  ): Promise<ProfilePhoto | undefined> {
+    const [photo] = await db
+      .update(profilePhotos)
+      .set(values)
+      .where(
+        and(eq(profilePhotos.id, photoId), eq(profilePhotos.userId, userId)),
+      )
+      .returning();
+
+    return photo;
+  }
+
   async getCompletionData(userId: string) {
     return db.transaction(async (transaction) => {
       const [profile] = await transaction

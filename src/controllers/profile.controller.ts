@@ -115,7 +115,12 @@ export class ProfileController {
       });
     }
 
-    const photos = await ProfileService.addPhotos(userId, files);
+    const isPrimary =
+      req.body.isPrimary === "true" ||
+      req.body.isPrimary === true ||
+      req.body.isPrimary === 1;
+
+    const photos = await ProfileService.addPhotos(userId, files, isPrimary);
 
     return ApiResponse.success(res, {
       statusCode: 201,

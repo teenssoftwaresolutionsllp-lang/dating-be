@@ -14,6 +14,7 @@ import {
 import { eq, and, or, desc, lt, gt, inArray } from "drizzle-orm";
 import { AgoraService } from "../services/agora.service";
 import { sendCallPushNotification } from "../services/notification.service";
+import { SocketService } from "../services/socket.service";
 import ApiResponse from "../utils/response";
 
 export class CallController {
@@ -353,7 +354,18 @@ export class CallController {
       )
       .limit(1);
 
-    // Trigger Mobile Push Notification (FCM / APNs)
+    // 1. Instant Real-Time WebSocket Delivery (In-App Overlay)
+    SocketService.emitToUser(receiverId, "incoming_call", {
+      callId: newCall.id,
+      channelName,
+      callType,
+      callerId,
+      callerName: callerProfile?.name || "Someone",
+      callerAvatar: callerPhoto?.url || null,
+      event: "INCOMING_CALL",
+    });
+
+    // 2. Trigger Mobile Push Notification (FCM / APNs for lock screen / background)
     sendCallPushNotification({
       receiverId,
       callerName: callerProfile?.name || "Someone",
@@ -641,6 +653,13 @@ export class CallController {
       durationSeconds: 0,
     });
 
+    // Notify caller via real-time WebSocket that call was rejected
+    SocketService.emitToUser(callRecord.callerId, "call_status", {
+      callId: callRecord.id,
+      action: "reject",
+      responderId: userId,
+    });
+
     return ApiResponse.success(res, {
       message: "Call rejected",
       data: { callId },
@@ -714,6 +733,14 @@ export class CallController {
       callType: callRecord.callType as "audio" | "video",
       status: finalStatus,
       durationSeconds: finalDuration,
+    });
+
+    // Notify other participant via real-time WebSocket that call has ended
+    const otherUserId = callRecord.callerId === userId ? callRecord.receiverId : callRecord.callerId;
+    SocketService.emitToUser(otherUserId, "call_status", {
+      callId: callRecord.id,
+      action: "end",
+      responderId: userId,
     });
 
     return ApiResponse.success(res, {

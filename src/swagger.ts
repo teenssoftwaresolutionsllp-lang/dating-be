@@ -7,6 +7,14 @@ const swaggerDocument = {
   },
   servers: [
     {
+      url: "/",
+      description: "Current environment (relative)",
+    },
+    {
+      url: "https://dating-be-p9nx.onrender.com",
+      description: "Render Production server",
+    },
+    {
       url: "http://localhost:5000",
       description: "Local development server",
     },

@@ -550,6 +550,20 @@ class ProfileService {
         throw error;
       }
 
+      // Check for screen replay, glare, or spoofing indicators
+      const spoofCheck = await RekognitionService.detectScreenOrSpoof(
+        selfieImage.buffer,
+      );
+      if (spoofCheck.isSpoof) {
+        const error = new Error(
+          spoofCheck.reason ||
+            "Screen or spoofed selfie detected. Please take a live selfie of your real face.",
+        ) as AppError;
+        error.statusCode = 400;
+        error.code = spoofCheck.code || "SCREEN_SPOOF_DETECTED";
+        throw error;
+      }
+
       // 2. Biometric Triangle Check: Match Government ID Photo against Live Selfie via AWS Rekognition
       kycFaceMatch = await RekognitionService.compareFaces(
         documentImage.buffer,
@@ -732,6 +746,32 @@ class ProfileService {
       ) as AppError;
       error.statusCode = 400;
       error.code = validation.code || "INVALID_SELFIE";
+      throw error;
+    }
+
+    const aiCheck = await RekognitionService.detectAiOrSyntheticImage(
+      file.buffer,
+    );
+    if (aiCheck.isAiGenerated) {
+      const error = new Error(
+        aiCheck.reason ||
+          "AI-generated or synthetic images are not supported. Please take a live camera selfie.",
+      ) as AppError;
+      error.statusCode = 400;
+      error.code = "AI_GENERATED_IMAGE_NOT_SUPPORTED";
+      throw error;
+    }
+
+    const spoofCheck = await RekognitionService.detectScreenOrSpoof(
+      file.buffer,
+    );
+    if (spoofCheck.isSpoof) {
+      const error = new Error(
+        spoofCheck.reason ||
+          "Screen or spoofed selfie detected. Please take a live selfie of your real face.",
+      ) as AppError;
+      error.statusCode = 400;
+      error.code = spoofCheck.code || "SCREEN_SPOOF_DETECTED";
       throw error;
     }
 

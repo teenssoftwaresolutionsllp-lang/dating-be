@@ -41,6 +41,13 @@ export interface AiDetectionResult {
   reason?: string;
 }
 
+export interface ScreenSpoofDetectionResult {
+  isSpoof: boolean;
+  reason?: string;
+  code?: string;
+  detectedLabels?: string[];
+}
+
 export class RekognitionService {
   private static get client(): RekognitionClient {
     return new RekognitionClient({
@@ -169,6 +176,150 @@ export class RekognitionService {
     }
 
     return { isAiGenerated: false };
+  }
+
+  /**
+   * 1B. DETECT SCREEN REPLAY, GLARE, OR PRESENTATION SPOOFING
+   * Uses AWS Rekognition DetectLabels (screen/phone/monitor/bezel detection)
+   * and DetectFaces (single live face quality, brightness/glare, and framing checks).
+   */
+  public static async detectScreenOrSpoof(
+    selfieBuffer: Buffer,
+  ): Promise<ScreenSpoofDetectionResult> {
+    if (!this.isConfigured()) {
+      return { isSpoof: false };
+    }
+
+    try {
+      const [labelsRes, facesRes] = await Promise.all([
+        this.client.send(
+          new DetectLabelsCommand({
+            Image: { Bytes: selfieBuffer },
+            MaxLabels: 30,
+            MinConfidence: 65,
+          }),
+        ),
+        this.client.send(
+          new DetectFacesCommand({
+            Image: { Bytes: selfieBuffer },
+            Attributes: ["ALL"],
+          }),
+        ),
+      ]);
+
+      // A. Screen / hardware / display bezel detection
+      const screenLabels = new Set([
+        "screen",
+        "monitor",
+        "computer monitor",
+        "display",
+        "digital display",
+        "cell phone",
+        "mobile phone",
+        "smartphone",
+        "phone",
+        "tablet computer",
+        "laptop",
+        "computer",
+        "electronics",
+        "television",
+        "tv",
+        "picture frame",
+      ]);
+
+      const flaggedLabels: string[] = [];
+      for (const label of labelsRes.Labels || []) {
+        const name = (label.Name || "").toLowerCase().trim();
+        const conf = label.Confidence || 0;
+        if (screenLabels.has(name) && conf >= 65) {
+          flaggedLabels.push(`${label.Name} (${conf.toFixed(1)}%)`);
+        }
+      }
+
+      if (flaggedLabels.length > 0) {
+        console.warn(
+          `⚠️ [Anti-Spoof] Screen/device labels detected in selfie: ${flaggedLabels.join(", ")}`,
+        );
+        return {
+          isSpoof: true,
+          code: "SCREEN_SPOOF_DETECTED",
+          detectedLabels: flaggedLabels,
+          reason:
+            "Screen or secondary device detected. Please take a live selfie of your real face directly with the front camera.",
+        };
+      }
+
+      // B. Face presence, framing, sunglasses & glare checks
+      const faces = facesRes.FaceDetails || [];
+      if (faces.length === 0) {
+        return {
+          isSpoof: true,
+          code: "NO_FACE_DETECTED",
+          reason:
+            "No clear human face detected. Please position your face inside the oval frame in good lighting.",
+        };
+      }
+
+      if (faces.length > 1) {
+        return {
+          isSpoof: true,
+          code: "MULTIPLE_FACES_DETECTED",
+          reason:
+            "Multiple faces detected. Please ensure only your face is inside the oval frame.",
+        };
+      }
+
+      const face = faces[0];
+      const box = face.BoundingBox;
+      if (box && ((box.Width ?? 0) < 0.15 || (box.Height ?? 0) < 0.15)) {
+        return {
+          isSpoof: true,
+          code: "FACE_TOO_SMALL",
+          reason:
+            "Your face is too far away. Please move closer so your face fills the oval frame.",
+        };
+      }
+
+      if (face.Sunglasses?.Value && (face.Sunglasses.Confidence || 0) >= 85) {
+        return {
+          isSpoof: true,
+          code: "SUNGLASSES_DETECTED",
+          reason:
+            "Please remove sunglasses or tinted eyewear and take a clear live selfie.",
+        };
+      }
+
+      const brightness = face.Quality?.Brightness;
+      const sharpness = face.Quality?.Sharpness;
+      if (
+        (typeof brightness === "number" && brightness < 15) ||
+        (typeof sharpness === "number" && sharpness < 15)
+      ) {
+        return {
+          isSpoof: true,
+          code: "POOR_SELFIE_QUALITY",
+          reason:
+            "Selfie is too dark or blurry. Please face a light source and keep steady inside the oval.",
+        };
+      }
+
+      if (typeof brightness === "number" && brightness > 98) {
+        return {
+          isSpoof: true,
+          code: "SCREEN_GLARE_DETECTED",
+          reason:
+            "Excessive screen glare or overexposure detected. Please take a clear live selfie of your real face.",
+        };
+      }
+
+      return { isSpoof: false };
+    } catch (err: any) {
+      console.warn(
+        "⚠️ [AWS Rekognition] Screen/spoof detection warning:",
+        err?.message || err,
+      );
+      return { isSpoof: false };
+    }
   }
 
   /**
@@ -472,6 +623,24 @@ export class RekognitionService {
       const match = response.FaceMatches?.[0];
       if (match && match.Similarity && match.Similarity >= minSimilarity) {
         const score = Math.round(match.Similarity * 10) / 10;
+
+        // For KYC, reject near-100% identical copies (photographing the Gov ID / another screen)
+        const maxKycSimilarity = Number.parseFloat(
+          process.env.AWS_REKOGNITION_MAX_KYC_SIMILARITY || "98.5",
+        );
+        if (context === "kyc" && score > maxKycSimilarity) {
+          console.warn(
+            `⚠️ [Anti-Spoof] KYC replica/photocopy detected! Similarity: ${score}% (> ${maxKycSimilarity}%)`,
+          );
+          return {
+            isMatch: false,
+            similarity: score,
+            provider: "aws_rekognition",
+            error:
+              "Photo copy or screen replica detected. Please take a real live selfie of your face instead of photographing your ID or another screen.",
+          };
+        }
+
         console.log(
           `✅ [AWS Rekognition] Biometric Face Match Verified! Similarity: ${score}% (Threshold: ${minSimilarity}%, Context: ${context})`,
         );

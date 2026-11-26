@@ -624,23 +624,6 @@ export class RekognitionService {
       if (match && match.Similarity && match.Similarity >= minSimilarity) {
         const score = Math.round(match.Similarity * 10) / 10;
 
-        // For KYC, reject near-100% identical copies (photographing the Gov ID / another screen)
-        const maxKycSimilarity = Number.parseFloat(
-          process.env.AWS_REKOGNITION_MAX_KYC_SIMILARITY || "98.5",
-        );
-        if (context === "kyc" && score > maxKycSimilarity) {
-          console.warn(
-            `⚠️ [Anti-Spoof] KYC replica/photocopy detected! Similarity: ${score}% (> ${maxKycSimilarity}%)`,
-          );
-          return {
-            isMatch: false,
-            similarity: score,
-            provider: "aws_rekognition",
-            error:
-              "Photo copy or screen replica detected. Please take a real live selfie of your face instead of photographing your ID or another screen.",
-          };
-        }
-
         console.log(
           `✅ [AWS Rekognition] Biometric Face Match Verified! Similarity: ${score}% (Threshold: ${minSimilarity}%, Context: ${context})`,
         );

@@ -324,10 +324,11 @@ export class MatchController {
    */
   static async reportUser(req: Request, res: Response): Promise<Response> {
     const userId = await resolveUserId(req);
-    const { targetUserId, reason, description } = req.body as {
+    const { targetUserId, reason, description, details } = req.body as {
       targetUserId: string;
       reason: string;
       description?: string;
+      details?: string;
     };
 
     if (!userId) {
@@ -350,7 +351,7 @@ export class MatchController {
       userId,
       targetUserId,
       reason,
-      description,
+      description: description ?? details,
     });
 
     return ApiResponse.success(res, {
@@ -440,30 +441,6 @@ export class MatchController {
       statusCode: 200,
       message: "Profile viewers retrieved successfully",
       data: viewers,
-    });
-  }
-
-  /**
-   * GET /api/v1/matches/badge-counts
-   * Consolidated counts for tab badges and notifications
-   */
-  static async getBadgeCounts(req: Request, res: Response): Promise<Response> {
-    const userId = await resolveUserId(req);
-
-    if (!userId) {
-      return ApiResponse.error(res, {
-        statusCode: 401,
-        message: "Unauthorized",
-        code: "UNAUTHORIZED",
-      });
-    }
-
-    const counts = await MatchService.getBadgeCounts(userId);
-
-    return ApiResponse.success(res, {
-      statusCode: 200,
-      message: "Badge counts retrieved successfully",
-      data: counts,
     });
   }
 }

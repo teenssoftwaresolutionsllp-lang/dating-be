@@ -106,29 +106,6 @@ export class AuthController {
     });
   }
 
-  static async socialAuth(req: Request, res: Response): Promise<Response> {
-    const result = await AuthService.socialAuth({
-      provider: req.body.provider,
-      providerUserId: req.body.providerUserId,
-      providerEmail: req.body.providerEmail,
-      userAgent: req.headers["user-agent"] as string | undefined,
-      ipAddress: req.ip || req.socket?.remoteAddress,
-    });
-    const { refreshToken, ...publicTokens } = result.tokens;
-    setRefreshTokenCookie(res, refreshToken);
-
-    return ApiResponse.success(res, {
-      statusCode: 200,
-      message: result.isNewUser
-        ? "Social account created successfully"
-        : "Social login successful",
-      data: {
-        ...result,
-        tokens: tokenResponse(req, refreshToken, publicTokens),
-      },
-    });
-  }
-
   /**
    * POST /api/v1/auth/language
    * Set preferred display language for authenticated user
@@ -151,31 +128,6 @@ export class AuthController {
       statusCode: 200,
       message: "Display language updated successfully",
       data: result,
-    });
-  }
-
-  /**
-   * GET /api/v1/auth/me
-   * Get current authenticated user details
-   */
-
-  static async getMe(req: Request, res: Response): Promise<Response> {
-    const userId = req.user?.id;
-
-    if (!userId) {
-      return ApiResponse.error(res, {
-        statusCode: 401,
-        message: "Unauthorized: User not authenticated",
-        code: "UNAUTHORIZED",
-      });
-    }
-
-    const user = await AuthService.getCurrentUser(userId);
-
-    return ApiResponse.success(res, {
-      statusCode: 200,
-      message: "User profile retrieved successfully",
-      data: { user },
     });
   }
 
@@ -234,35 +186,6 @@ export class AuthController {
     return ApiResponse.success(res, {
       statusCode: 200,
       message: result.message,
-    });
-  }
-
-  /**
-   * POST /api/v1/auth/logout-all
-   * Revoke every active session for the authenticated user.
-   */
-  static async logoutAll(req: Request, res: Response): Promise<Response> {
-    const userId = req.user?.id;
-
-    if (!userId) {
-      return ApiResponse.error(res, {
-        statusCode: 401,
-        message: "Unauthorized: User not authenticated",
-        code: "UNAUTHORIZED",
-      });
-    }
-
-    await AuthService.logoutAllSessions(String(userId));
-    res.clearCookie("refreshToken", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/api/v1/auth",
-    });
-
-    return ApiResponse.success(res, {
-      statusCode: 200,
-      message: "Logged out from all devices successfully",
     });
   }
 }

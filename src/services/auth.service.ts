@@ -26,14 +26,6 @@ import type {
   User,
 } from "../types/index";
 
-type SocialAuthParams = {
-  provider: string;
-  providerUserId: string;
-  providerEmail?: string;
-  userAgent?: string | null;
-  ipAddress?: string | null;
-};
-
 export class AuthService {
   static hashOtp(otp: string): string {
     return createHash("sha256").update(otp).digest("hex");
@@ -373,76 +365,6 @@ export class AuthService {
     return { userId, language: updatedUser.preferredLanguage };
   }
 
-  static async socialAuth({
-    provider,
-    providerUserId,
-    providerEmail,
-    userAgent = null,
-    ipAddress = null,
-  }: SocialAuthParams): Promise<AuthResult> {
-    const email = providerEmail || `${provider}_${providerUserId}@oauth.auth`;
-    const now = new Date();
-    const existingUser = await AuthRepository.findUserByEmail(email);
-    const isNewUser = !existingUser;
-    const user = existingUser
-      ? await AuthRepository.markUserLogin(existingUser.id, now)
-      : await AuthRepository.createUser({
-          email,
-          authProvider: provider,
-          emailVerified: true,
-          phoneVerified: false,
-          status: "active",
-        });
-    const sessionId = randomUUID();
-    const tokens = generateTokens(
-      { id: user.id, phone: user.phone, role: user.role },
-      sessionId,
-    );
-
-    await AuthRepository.createSession({
-      id: sessionId,
-      userId: user.id,
-      refreshTokenHash: AuthService.hashRefreshToken(tokens.refreshToken),
-      userAgent,
-      ipAddress,
-      expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
-    });
-
-    return {
-      isNewUser,
-      user: AuthService.toSafeUser(user),
-      tokens,
-      provider,
-    };
-  }
-
-  /**
-   * Get Current Authenticated User Details
-   */
-  static async getCurrentUser(userId: string): Promise<SafeUser> {
-    const user = await AuthRepository.findUserById(userId);
-
-    if (!user) {
-      const error = new Error("User not found") as AppError;
-      error.statusCode = 404;
-      error.code = "USER_NOT_FOUND";
-      throw error;
-    }
-
-    return {
-      id: user.id,
-      userId: user.id,
-      phone: user.phone,
-      countryCode: "+91",
-      preferredLanguage: user.preferredLanguage || "en",
-      role: user.role,
-      isVerified: user.phoneVerified,
-      isActive: user.status === "active",
-      profileCompleted: false,
-      createdAt: user.createdAt,
-    };
-  }
-
   /**
    * Refresh Token
    */
@@ -521,13 +443,6 @@ export class AuthService {
       success: true,
       message: "Logged out successfully",
     };
-  }
-
-  /**
-   * Revoke every active session for a user.
-   */
-  static async logoutAllSessions(userId: string): Promise<void> {
-    await AuthRepository.revokeAllSessions(userId);
   }
 }
 

@@ -1,6 +1,5 @@
 import { Router } from "express";
 import AuthController from "../controllers/auth.controller";
-import { validateSocialAuth } from "../middleware/validation.middleware";
 import { authenticate } from "../middleware/auth.middleware";
 import { asyncHandler } from "../middleware/error.middleware";
 import { validateBody } from "../middleware/validation.middleware";
@@ -75,91 +74,6 @@ router.post(
   "/resend-otp",
   validateBody(sendOtpSchema),
   asyncHandler(AuthController.resendOtp),
-);
-
-/**
- * @swagger
- * /api/v1/auth/google:
- *   post:
- *     summary: Login or register with Google
- *     tags: [Auth]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [token]
- *             properties:
- *               token:
- *                 type: string
- *                 description: Google ID token
- *     responses:
- *       200:
- *         description: Authenticated successfully
- *       401:
- *         description: Invalid token
- */
-router.post(
-  "/google",
-  validateSocialAuth("google"),
-  asyncHandler(AuthController.socialAuth),
-);
-
-/**
- * @swagger
- * /api/v1/auth/facebook:
- *   post:
- *     summary: Login or register with Facebook
- *     tags: [Auth]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [token]
- *             properties:
- *               token:
- *                 type: string
- *                 description: Facebook access token
- *     responses:
- *       200:
- *         description: Authenticated successfully
- *       401:
- *         description: Invalid token
- */
-router.post(
-  "/facebook",
-  validateSocialAuth("facebook"),
-  asyncHandler(AuthController.socialAuth),
-);
-
-/**
- * @swagger
- * /api/v1/auth/instagram:
- *   post:
- *     summary: Login or register with Instagram
- *     tags: [Auth]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [token]
- *             properties:
- *               token:
- *                 type: string
- *                 description: Instagram access token
- *     responses:
- *       200:
- *         description: Authenticated successfully
- */
-router.post(
-  "/instagram",
-  validateSocialAuth("instagram"),
-  asyncHandler(AuthController.socialAuth),
 );
 
 /**
@@ -247,42 +161,6 @@ router.post(
  *         description: Logged out successfully
  */
 router.post("/logout", asyncHandler(AuthController.logout));
-
-/**
- * @swagger
- * /api/v1/auth/logout-all:
- *   post:
- *     summary: Logout from all devices - revoke all sessions
- *     tags: [Auth]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: All sessions revoked
- *       401:
- *         description: Unauthorized
- */
-router.post(
-  "/logout-all",
-  authenticate,
-  asyncHandler(AuthController.logoutAll),
-);
-
-/**
- * @swagger
- * /api/v1/auth/profile:
- *   get:
- *     summary: Get the authenticated user's basic account info
- *     tags: [Auth]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: User profile returned
- *       401:
- *         description: Unauthorized
- */
-router.get("/profile", authenticate, asyncHandler(AuthController.getMe));
 
 /**
  * @swagger

@@ -18,19 +18,22 @@ import {
 import { RekognitionService } from "./rekognition.service";
 
 export const ONBOARDING_STEPS = [
-  "BASIC_DETAILS",
-  "BIRTHDAY",
-  "LOCATION",
-  "RELATIONSHIP",
-  "LANGUAGES",
-  "EDUCATION",
-  "KYC",
-  "PHOTOS",
-  "INTERESTS",
-  "RELIGION",
-  "LOOKING_FOR",
-  "PREFERENCES",
-  "COMPLETED",
+  "set-profile",
+  "birthday",
+  "location",
+  "relationship",
+  "languages",
+  "qualification",
+  "verification",
+  "photos",
+  "interests",
+  "food-preference",
+  "lifestyle",
+  "nature",
+  "religion",
+  "looking-for",
+  "ideal-match",
+  "completed",
 ] as const;
 
 const createNotFoundError = (message: string): AppError => {
@@ -308,23 +311,36 @@ class ProfileService {
     return ProfileRepository.findCompleteByUserId(userId);
   }
 
-  async updateProfile(userId: string, values: ProfileUpdate): Promise<Profile> {
+  async updateProfile(
+    userId: string,
+    values: ProfileUpdate & {
+      city?: string;
+      state?: string;
+      country?: string;
+    },
+  ): Promise<Profile> {
     const status = await ProfileRepository.findOnboardingStatus(userId);
 
     if (!status) {
       throw createNotFoundError("User not found");
     }
 
+    const { city, state, country, ...profileValues } = values;
     const existingProfile = await ProfileRepository.findByUserId(userId);
 
     const mergedProfile = {
       ...existingProfile,
-      ...values,
+      ...profileValues,
     };
 
     const nextStep = this.getNextStep(mergedProfile, status.onboardingStep);
 
-    return ProfileRepository.saveProfileAndStep(userId, values, nextStep);
+    return ProfileRepository.saveProfileAndStep(
+      userId,
+      profileValues,
+      nextStep,
+      city ? { city, state, country } : undefined,
+    );
   }
 
   async getLanguages(): Promise<Language[]> {
@@ -841,45 +857,44 @@ class ProfileService {
     const data = await ProfileRepository.getCompletionData(userId);
     const missingSteps: string[] = [];
 
-    if (
-      !data.profile?.name ||
-      !data.profile.dateOfBirth ||
-      !data.profile.gender ||
-      !data.profile.heightCm
-    ) {
-      missingSteps.push("BASIC_DETAILS");
+    if (!data.profile?.name || !data.profile.gender) {
+      missingSteps.push("set-profile");
+    }
+
+    if (!data.profile?.dateOfBirth || !data.profile.heightCm) {
+      missingSteps.push("birthday");
     }
 
     if (!data.profile?.locationId) {
-      missingSteps.push("LOCATION");
+      missingSteps.push("location");
     }
 
     if (!data.profile?.relationshipStatus) {
-      missingSteps.push("RELATIONSHIP");
+      missingSteps.push("relationship");
     }
 
     if (data.languageCount === 0) {
-      missingSteps.push("LANGUAGES");
+      missingSteps.push("languages");
     }
 
     if (!data.educationExists) {
-      missingSteps.push("EDUCATION");
+      missingSteps.push("qualification");
     }
 
     if (data.kycStatus !== "verified") {
-      missingSteps.push("KYC");
+      missingSteps.push("verification");
     }
 
     if (data.photoCount === 0) {
-      missingSteps.push("PHOTOS");
+      missingSteps.push("photos");
     }
 
     if (data.interestCount === 0) {
-      missingSteps.push("INTERESTS");
+      missingSteps.push("interests");
     }
 
     if (!data.preferencesExists) {
-      missingSteps.push("PREFERENCES");
+      missingSteps.push("looking-for");
     }
 
     if (missingSteps.length > 0) {
@@ -891,11 +906,11 @@ class ProfileService {
   }
 
   private getNextStep(profile: Partial<Profile>, currentStep: string): string {
-    let nextStep = "BASIC_DETAILS";
+    let nextStep = "set-profile";
     const hasLocation = Boolean(profile.locationId);
 
     if (profile.name && profile.gender) {
-      nextStep = "BIRTHDAY";
+      nextStep = "birthday";
     }
 
     if (
@@ -904,7 +919,7 @@ class ProfileService {
       profile.dateOfBirth &&
       profile.heightCm
     ) {
-      nextStep = "LOCATION";
+      nextStep = "location";
     }
 
     if (
@@ -914,7 +929,7 @@ class ProfileService {
       profile.heightCm &&
       hasLocation
     ) {
-      nextStep = "RELATIONSHIP";
+      nextStep = "relationship";
     }
 
     if (
@@ -925,7 +940,7 @@ class ProfileService {
       hasLocation &&
       profile.relationshipStatus
     ) {
-      nextStep = "LANGUAGES";
+      nextStep = "languages";
     }
 
     const currentIndex = ONBOARDING_STEPS.indexOf(

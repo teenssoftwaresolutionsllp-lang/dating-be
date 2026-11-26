@@ -1647,29 +1647,6 @@ export class MatchService {
   static async getProfileViewers(userId: string) {
     return this.profileViewersMap.get(userId) || [];
   }
-
-  /**
-   * 15. GET CONSOLIDATED BADGE COUNTS
-   */
-  static async getBadgeCounts(userId: string) {
-    const [likesCountResult] = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(swipes)
-      .where(
-        and(
-          eq(swipes.targetUserId, userId),
-          or(eq(swipes.action, "like"), eq(swipes.action, "superlike")),
-        ),
-      );
-
-    const viewers = this.profileViewersMap.get(userId) || [];
-
-    return {
-      likesCount: Number(likesCountResult?.count || 0),
-      unreadChatsCount: 0,
-      unreadViewersCount: viewers.length,
-    };
-  }
 }
 
 export default MatchService;

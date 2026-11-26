@@ -6,6 +6,7 @@ import {
   interests,
   kycVerifications,
   languages,
+  locations,
   profileInterests,
   profileLanguages,
   profilePhotos,
@@ -31,6 +32,7 @@ export type ProfileUpdate = Partial<
     | "gender"
     | "religion"
     | "heightCm"
+    | "locationId"
     | "locationUpdatedAt"
     | "relationshipStatus"
     | "foodPreference"
@@ -131,7 +133,12 @@ class ProfileRepository {
         .from(kycVerifications)
         .where(eq(kycVerifications.userId, userId));
       const [preferences] = await transaction
-        .select({ id: datingPreferences.id })
+        .select({
+          id: datingPreferences.id,
+          relationshipIntentions: datingPreferences.relationshipIntentions,
+          maxDistanceKm: datingPreferences.maxDistanceKm,
+          religionPreferences: datingPreferences.religionPreferences,
+        })
         .from(datingPreferences)
         .where(eq(datingPreferences.userId, userId));
       const [photoCount] = await transaction
@@ -166,6 +173,7 @@ class ProfileRepository {
         educationExists: Boolean(educationRecord),
         kycStatus: kyc?.status ?? null,
         photoCount: Number(photoCount.count),
+        preferences: preferences ?? null,
         preferencesExists: Boolean(preferences),
       };
     });
@@ -291,9 +299,9 @@ class ProfileRepository {
             documentNumberHash,
             ...(documentImage
               ? {
-                  documentImageStorageKey: documentImage.storageKey,
-                  documentImageUrl: documentImage.url,
-                }
+                documentImageStorageKey: documentImage.storageKey,
+                documentImageUrl: documentImage.url,
+              }
               : {}),
             ...(selfieUrl ? { providerReference: selfieUrl } : {}),
             ...(selfieStorageKey ? { selfieStorageKey } : {}),
@@ -519,9 +527,9 @@ class ProfileRepository {
 
   async findOnboardingStatus(userId: string): Promise<
     | {
-        onboardingStep: string;
-        onboardingCompletedAt: Date | null;
-      }
+      onboardingStep: string;
+      onboardingCompletedAt: Date | null;
+    }
     | undefined
   > {
     const [user] = await db
@@ -536,43 +544,52 @@ class ProfileRepository {
     }
 
     const data = await this.getCompletionData(userId);
-    let onboardingStep = "COMPLETED";
+    let onboardingStep = "completed";
 
     if (!data.profile?.name || !data.profile.gender) {
-      onboardingStep = "BASIC_DETAILS";
-    } else if (!data.profile.dateOfBirth) {
-      onboardingStep = "BIRTHDAY";
-    } else if (!data.profile.heightCm) {
-      onboardingStep = "LOCATION";
+      onboardingStep = "set-profile";
+    } else if (!data.profile.dateOfBirth || !data.profile.heightCm) {
+      onboardingStep = "birthday";
     } else if (!data.profile.locationId) {
-      onboardingStep = "LOCATION";
+      onboardingStep = "location";
     } else if (!data.profile.relationshipStatus) {
-      onboardingStep = "RELATIONSHIP";
+      onboardingStep = "relationship";
     } else if (data.languageCount === 0) {
-      onboardingStep = "LANGUAGES";
+      onboardingStep = "languages";
     } else if (!data.educationExists) {
-      onboardingStep = "EDUCATION";
+      onboardingStep = "qualification";
     } else if (data.kycStatus !== "verified") {
-      onboardingStep = "KYC";
+      onboardingStep = "verification";
     } else if (data.photoCount === 0) {
-      onboardingStep = "PHOTOS";
+      onboardingStep = "photos";
     } else if (data.interestCount === 0) {
-      onboardingStep = "INTERESTS";
-    } else if (!data.preferencesExists) {
-      onboardingStep = "PREFERENCES";
+      onboardingStep = "interests";
+    } else if (!data.profile.foodPreference) {
+      onboardingStep = "food-preference";
+    } else if (!data.profile.drinking || !data.profile.smoking) {
+      onboardingStep = "lifestyle";
+    } else if (!data.profile.vibes || data.profile.vibes.length === 0) {
+      onboardingStep = "nature";
+    } else if (!data.profile.religion) {
+      onboardingStep = "religion";
+    } else if (!data.preferences?.relationshipIntentions?.length) {
+      onboardingStep = "looking-for";
+    } else if (!data.preferences?.maxDistanceKm) {
+      onboardingStep = "ideal-match";
     }
 
     return {
       onboardingStep,
       onboardingCompletedAt:
-        onboardingStep === "COMPLETED" ? user.updatedAt : null,
+        onboardingStep === "completed" ? user.updatedAt : null,
     };
   }
 
   async saveProfileAndStep(
     userId: string,
     values: ProfileUpdate,
-    onboardingStep: string,
+    _onboardingStep: string,
+    locationInput?: { city?: string; state?: string; country?: string },
   ): Promise<Profile> {
     return db.transaction(async (transaction) => {
       const [existingProfile] = await transaction
@@ -581,12 +598,55 @@ class ProfileRepository {
         .where(eq(profiles.userId, userId));
 
       const now = new Date();
+      let resolvedValues: ProfileUpdate = { ...values };
+
+      if (locationInput?.city?.trim()) {
+        const cleanCity = locationInput.city.trim();
+        const cleanState = locationInput.state?.trim() || null;
+        const cleanCountry = locationInput.country?.trim() || null;
+        const customPlaceId = `custom:${cleanCity.toLowerCase()}:${(cleanState ?? "").toLowerCase()}:${(cleanCountry ?? "").toLowerCase()}`;
+
+        let [loc] = await transaction
+          .select()
+          .from(locations)
+          .where(eq(locations.googlePlaceId, customPlaceId));
+
+        if (!loc) {
+          [loc] = await transaction
+            .insert(locations)
+            .values({
+              googlePlaceId: customPlaceId,
+              name: cleanCity,
+              city: cleanCity,
+              state: cleanState,
+              country: cleanCountry,
+            })
+            .onConflictDoNothing()
+            .returning();
+
+          if (!loc) {
+            [loc] = await transaction
+              .select()
+              .from(locations)
+              .where(eq(locations.googlePlaceId, customPlaceId));
+          }
+        }
+
+        if (loc) {
+          resolvedValues = {
+            ...resolvedValues,
+            locationId: loc.id,
+            locationUpdatedAt: now,
+          };
+        }
+      }
+
       let profile: Profile | undefined;
 
       if (existingProfile) {
         [profile] = await transaction
           .update(profiles)
-          .set({ ...values, updatedAt: now })
+          .set({ ...resolvedValues, updatedAt: now })
           .where(eq(profiles.userId, userId))
           .returning();
       } else {
@@ -594,9 +654,9 @@ class ProfileRepository {
           .insert(profiles)
           .values({
             userId,
-            name: values.name || "User",
-            gender: values.gender || "other",
-            ...values,
+            name: resolvedValues.name || "User",
+            gender: resolvedValues.gender || "other",
+            ...resolvedValues,
           })
           .returning();
       }

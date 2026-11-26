@@ -291,20 +291,4 @@ router.post("/profile-view", asyncHandler(MatchController.recordProfileView));
  */
 router.get("/profile-viewers", asyncHandler(MatchController.getProfileViewers));
 
-/**
- * @swagger
- * /api/v1/matches/badge-counts:
- *   get:
- *     summary: Get real-time badge counts (likes, matches, messages)
- *     tags: [Match]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Badge counts returned
- *       401:
- *         description: Unauthorized
- */
-router.get("/badge-counts", asyncHandler(MatchController.getBadgeCounts));
-
 export default router;

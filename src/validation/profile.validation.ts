@@ -30,6 +30,9 @@ export const profileUpdateSchema = z
     vibes: z.array(z.string().trim()).optional(),
     nature: z.array(z.string().trim()).optional(),
     bio: z.string().trim().max(1000).optional(),
+    city: z.string().trim().max(120).optional(),
+    state: z.string().trim().max(120).optional(),
+    country: z.string().trim().max(120).optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: "At least one profile field is required",

@@ -136,77 +136,6 @@ const swaggerDocument = {
         },
       },
     },
-    "/api/v1/auth/google": {
-      post: {
-        tags: ["Auth"],
-        summary: "Login or register with Google",
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["token"],
-                properties: {
-                  token: { type: "string", description: "Google ID token" },
-                },
-              },
-            },
-          },
-        },
-        responses: {
-          200: { description: "Authenticated successfully" },
-          401: { description: "Invalid token" },
-        },
-      },
-    },
-    "/api/v1/auth/facebook": {
-      post: {
-        tags: ["Auth"],
-        summary: "Login or register with Facebook",
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["token"],
-                properties: {
-                  token: { type: "string", description: "Facebook access token" },
-                },
-              },
-            },
-          },
-        },
-        responses: {
-          200: { description: "Authenticated successfully" },
-          401: { description: "Invalid token" },
-        },
-      },
-    },
-    "/api/v1/auth/instagram": {
-      post: {
-        tags: ["Auth"],
-        summary: "Login or register with Instagram",
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["token"],
-                properties: {
-                  token: { type: "string", description: "Instagram access token" },
-                },
-              },
-            },
-          },
-        },
-        responses: {
-          200: { description: "Authenticated successfully" },
-        },
-      },
-    },
     "/api/v1/auth/refresh-token": {
       post: {
         tags: ["Auth"],
@@ -236,28 +165,6 @@ const swaggerDocument = {
         security: [{ bearerAuth: [] }],
         responses: {
           200: { description: "Logged out successfully" },
-          401: { description: "Unauthorized" },
-        },
-      },
-    },
-    "/api/v1/auth/logout-all": {
-      post: {
-        tags: ["Auth"],
-        summary: "Logout from all devices - revoke all sessions",
-        security: [{ bearerAuth: [] }],
-        responses: {
-          200: { description: "All sessions revoked" },
-          401: { description: "Unauthorized" },
-        },
-      },
-    },
-    "/api/v1/auth/profile": {
-      get: {
-        tags: ["Auth"],
-        summary: "Get the authenticated user's basic account info",
-        security: [{ bearerAuth: [] }],
-        responses: {
-          200: { description: "User profile returned" },
           401: { description: "Unauthorized" },
         },
       },
@@ -376,7 +283,7 @@ const swaggerDocument = {
     "/api/v1/profile/update-profile": {
       patch: {
         tags: ["Profile"],
-        summary: "Create or update core profile fields (name, birthday, gender, height)",
+        summary: "Create or update core profile fields",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -386,9 +293,19 @@ const swaggerDocument = {
                 type: "object",
                 properties: {
                   name: { type: "string", example: "John Doe" },
-                  birthday: { type: "string", format: "date", example: "1995-06-15" },
+                  dateOfBirth: { type: "string", format: "date", example: "1995-06-15" },
                   gender: { type: "string", example: "male" },
-                  height: { type: "number", example: 175 },
+                  heightCm: { type: "number", example: 175 },
+                  religion: { type: "string", example: "Hindu" },
+                  relationshipStatus: { type: "string", example: "Single" },
+                  foodPreference: { type: "string", example: "Vegetarian" },
+                  drinking: { type: "string", example: "Socially" },
+                  smoking: { type: "string", example: "No" },
+                  vibes: { type: "array", items: { type: "string" } },
+                  bio: { type: "string" },
+                  city: { type: "string" },
+                  state: { type: "string" },
+                  country: { type: "string" },
                 },
               },
             },
@@ -416,9 +333,9 @@ const swaggerDocument = {
             "application/json": {
               schema: {
                 type: "object",
-                required: ["languages"],
+                required: ["languageIds"],
                 properties: {
-                  languages: { type: "array", items: { type: "string" }, example: ["en", "hi"] },
+                  languageIds: { type: "array", items: { type: "number" }, example: [1, 2] },
                 },
               },
             },
@@ -446,9 +363,9 @@ const swaggerDocument = {
             "application/json": {
               schema: {
                 type: "object",
-                required: ["interests"],
+                required: ["interestIds"],
                 properties: {
-                  interests: { type: "array", items: { type: "string" }, example: ["travel", "music"] },
+                  interestIds: { type: "array", items: { type: "number" }, example: [1, 2, 3] },
                 },
               },
             },
@@ -463,7 +380,7 @@ const swaggerDocument = {
     "/api/v1/profile/education": {
       patch: {
         tags: ["Profile"],
-        summary: "Create or update education, designation, and salary info",
+        summary: "Create or update education, profession, and income info",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -472,10 +389,12 @@ const swaggerDocument = {
               schema: {
                 type: "object",
                 properties: {
-                  degree: { type: "string", example: "B.Tech" },
-                  institution: { type: "string", example: "IIT Delhi" },
-                  designation: { type: "string", example: "Software Engineer" },
-                  salary: { type: "number", example: 1200000 },
+                  educationLevel: { type: "string", example: "Bachelors" },
+                  qualification: { type: "string", example: "B.Tech" },
+                  profession: { type: "string", example: "Software Engineer" },
+                  occupation: { type: "string", example: "Software Engineer" },
+                  companyName: { type: "string", example: "Acme Corp" },
+                  incomeRange: { type: "string", example: "10-15 LPA" },
                 },
               },
             },
@@ -664,10 +583,12 @@ const swaggerDocument = {
               schema: {
                 type: "object",
                 properties: {
-                  interestedIn: { type: "string", example: "female" },
-                  ageMin: { type: "number", example: 22 },
-                  ageMax: { type: "number", example: 35 },
-                  maxDistance: { type: "number", example: 50 },
+                  minAge: { type: "number", example: 22 },
+                  maxAge: { type: "number", example: 35 },
+                  maxDistanceKm: { type: "number", example: 50 },
+                  preferredInterestIds: { type: "array", items: { type: "number" } },
+                  relationshipIntentions: { type: "array", items: { type: "string" } },
+                  religionPreferences: { type: "array", items: { type: "string" } },
                 },
               },
             },
@@ -740,9 +661,9 @@ const swaggerDocument = {
             "application/json": {
               schema: {
                 type: "object",
-                required: ["query"],
+                required: ["input"],
                 properties: {
-                  query: { type: "string", example: "Mumbai" },
+                  input: { type: "string", example: "Mumbai" },
                 },
               },
             },
@@ -966,17 +887,6 @@ const swaggerDocument = {
         security: [{ bearerAuth: [] }],
         responses: {
           200: { description: "Profile viewers returned" },
-          401: { description: "Unauthorized" },
-        },
-      },
-    },
-    "/api/v1/matches/badge-counts": {
-      get: {
-        tags: ["Match"],
-        summary: "Get real-time badge counts (likes, matches, messages)",
-        security: [{ bearerAuth: [] }],
-        responses: {
-          200: { description: "Badge counts returned" },
           401: { description: "Unauthorized" },
         },
       },
@@ -1238,6 +1148,26 @@ const swaggerDocument = {
         responses: {
           200: { description: "Push token registered successfully" },
           400: { description: "pushToken is required" },
+          401: { description: "Unauthorized" },
+        },
+      },
+    },
+    "/api/v1/users/notification-settings": {
+      get: {
+        tags: ["Users"],
+        summary: "Get notification channel settings",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: { description: "Notification settings retrieved" },
+          401: { description: "Unauthorized" },
+        },
+      },
+      patch: {
+        tags: ["Users"],
+        summary: "Update notification channel settings",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: { description: "Notification settings updated" },
           401: { description: "Unauthorized" },
         },
       },

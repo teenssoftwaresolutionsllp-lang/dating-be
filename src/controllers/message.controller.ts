@@ -137,6 +137,8 @@ export class MessageController {
         items: result.items,
         isMatched: result.isMatched,
         messagesRemaining: result.messagesRemaining,
+        isUnavailable: result.isUnavailable,
+        unavailableReason: result.unavailableReason,
       },
       meta: {
         total: result.total,

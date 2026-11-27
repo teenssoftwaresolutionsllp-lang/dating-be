@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import type { TokensResponse } from "../types/index";
 import AuthService from "../services/auth.service";
 import ApiResponse from "../utils/response";
+import { verifyAccessToken } from "../utils/jwt";
 
 const getRefreshTokenCookie = (cookieHeader?: string): string | undefined =>
   cookieHeader
@@ -174,8 +175,25 @@ export class AuthController {
       (typeof req.body?.refreshToken === "string"
         ? req.body.refreshToken.trim()
         : undefined);
+    const pushToken =
+      typeof req.body?.pushToken === "string"
+        ? req.body.pushToken.trim()
+        : undefined;
 
-    const result = await AuthService.logout({ refreshToken });
+    let userId: string | undefined;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      try {
+        const decoded = verifyAccessToken(authHeader.split(" ")[1]);
+        if (decoded?.id) {
+          userId = String(decoded.id);
+        }
+      } catch {
+        // Token may already be expired during logout; fallback to refreshToken lookup
+      }
+    }
+
+    const result = await AuthService.logout({ refreshToken, userId, pushToken });
     res.clearCookie("refreshToken", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

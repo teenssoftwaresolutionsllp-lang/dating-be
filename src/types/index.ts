@@ -107,6 +107,7 @@ export interface RefreshTokenParams {
 export interface LogoutParams {
   refreshToken?: string;
   userId?: string;
+  pushToken?: string;
 }
 
 // API Response Structures
@@ -276,6 +277,8 @@ export interface SendMessageResult {
 export interface ConversationHistory extends PaginatedResult<MessageRecord> {
   isMatched: boolean;
   messagesRemaining: number | null;
+  isUnavailable?: boolean;
+  unavailableReason?: string;
 }
 
 export interface GetConversationParams {
@@ -292,6 +295,7 @@ export interface ConversationSummary {
     name: string;
     primaryPhoto: string | null;
     isOnline: boolean;
+    isUnavailable?: boolean;
   };
   lastMessage: {
     id: string;
@@ -305,6 +309,8 @@ export interface ConversationSummary {
   lastActivityAt: Date;
   isMatched: boolean;
   messagesRemaining: number | null;
+  isUnavailable?: boolean;
+  unavailableReason?: string;
 }
 
 export interface DeleteMessageParams {

@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import AccountService from "../services/account.service";
+import { SocketService } from "../services/socket.service";
 import ApiResponse from "../utils/response";
 
 const getUserId = (req: Request): string | undefined =>
@@ -17,6 +18,7 @@ export class AccountController {
     }
 
     const result = await AccountService.deactivateAccount(userId);
+    SocketService.disconnectUser(userId);
     return ApiResponse.success(res, {
       statusCode: 200,
       message:
@@ -60,6 +62,7 @@ export class AccountController {
       userId,
       req.body.otp,
     );
+    SocketService.disconnectUser(userId);
     return ApiResponse.success(res, {
       statusCode: result.mediaCleanupPending ? 202 : 200,
       message: result.mediaCleanupPending

@@ -204,6 +204,22 @@ export class SocketService {
     }
   }
 
+  /**
+   * Immediately disconnect all active sockets belonging to a user (logout / deactivate / delete)
+   */
+  public static disconnectUser(userId: string): void {
+    const socketIds = this.userSockets.get(userId);
+    if (!socketIds || !this.io) return;
+
+    for (const socketId of Array.from(socketIds)) {
+      const sock = this.io.sockets.sockets.get(socketId);
+      if (sock) {
+        sock.disconnect(true);
+      }
+    }
+    this.userSockets.delete(userId);
+  }
+
   public static getIO(): Server | null {
     return this.io;
   }

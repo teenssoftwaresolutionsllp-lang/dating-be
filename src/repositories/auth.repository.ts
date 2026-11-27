@@ -4,6 +4,7 @@ import {
   otpVerifications,
   type NewOtpVerification,
   type OtpVerification,
+  userDevices,
   userSessions,
   type NewUserSession,
   type UserSession,
@@ -166,6 +167,17 @@ class AuthRepository {
       .where(eq(userSessions.id, sessionId));
   }
 
+  async findSessionByRefreshTokenHash(
+    refreshTokenHash: string,
+  ): Promise<UserSession | undefined> {
+    const [session] = await db
+      .select()
+      .from(userSessions)
+      .where(eq(userSessions.refreshTokenHash, refreshTokenHash));
+
+    return session;
+  }
+
   async revokeSessionByRefreshTokenHash(
     refreshTokenHash: string,
   ): Promise<void> {
@@ -173,6 +185,45 @@ class AuthRepository {
       .update(userSessions)
       .set({ revokedAt: new Date() })
       .where(eq(userSessions.refreshTokenHash, refreshTokenHash));
+  }
+
+  async revokeDeviceTokens({
+    userId,
+    pushToken,
+  }: {
+    userId?: string;
+    pushToken?: string;
+  }): Promise<void> {
+    const now = new Date();
+    const cleanToken = pushToken?.trim();
+
+    if (cleanToken) {
+      await db
+        .update(userDevices)
+        .set({ revokedAt: now })
+        .where(
+          userId
+            ? and(
+                eq(userDevices.deviceToken, cleanToken),
+                eq(userDevices.userId, userId),
+                isNull(userDevices.revokedAt),
+              )
+            : and(
+                eq(userDevices.deviceToken, cleanToken),
+                isNull(userDevices.revokedAt),
+              ),
+        );
+      return;
+    }
+
+    if (userId) {
+      await db
+        .update(userDevices)
+        .set({ revokedAt: now })
+        .where(
+          and(eq(userDevices.userId, userId), isNull(userDevices.revokedAt)),
+        );
+    }
   }
 
   async revokeAllSessions(userId: string): Promise<void> {

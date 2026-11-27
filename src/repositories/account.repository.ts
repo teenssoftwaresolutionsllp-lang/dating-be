@@ -21,6 +21,7 @@ import {
   messages,
   otpVerifications,
   profilePhotos,
+  userDevices,
   userSessions,
   userLoginEvents,
   users,
@@ -188,6 +189,9 @@ const deleteUserInTransaction = async (
           )
         : eq(otpVerifications.userId, userId),
     );
+  await transaction
+    .delete(userDevices)
+    .where(eq(userDevices.userId, userId));
   await transaction.delete(users).where(eq(users.id, userId));
   return jobIds;
 };
@@ -255,6 +259,13 @@ class AccountRepository {
         .set({ revokedAt: now })
         .where(
           and(eq(userSessions.userId, userId), isNull(userSessions.revokedAt)),
+        );
+
+      await transaction
+        .update(userDevices)
+        .set({ revokedAt: now })
+        .where(
+          and(eq(userDevices.userId, userId), isNull(userDevices.revokedAt)),
         );
 
       return deactivatedUser;

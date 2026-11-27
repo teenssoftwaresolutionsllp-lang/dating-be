@@ -237,6 +237,18 @@ export class MessageService {
   }: GetConversationParams): Promise<ConversationHistory> {
     const currentPage = Math.max(1, page);
     const pageLimit = Math.min(100, Math.max(1, limit));
+    const [partnerAccount] = await db
+      .select({ id: users.id, status: users.status })
+      .from(users)
+      .where(eq(users.id, otherUserId))
+      .limit(1);
+    const isUnavailable = !partnerAccount || partnerAccount.status !== "active";
+    const unavailableReason = !partnerAccount
+      ? "User is no longer available."
+      : partnerAccount.status !== "active"
+        ? "Account unavailable."
+        : undefined;
+
     const conversation = await findConversation(userId, otherUserId);
     if (!conversation) {
       const user1Id = userId < otherUserId ? userId : otherUserId;
@@ -256,6 +268,8 @@ export class MessageService {
           match?.status === "active"
             ? null
             : PRE_MATCH_MESSAGE_LIMIT,
+        isUnavailable,
+        unavailableReason,
       };
     }
 
@@ -335,6 +349,8 @@ export class MessageService {
         conversation.matchStatus === "active"
           ? null
           : Math.max(0, PRE_MATCH_MESSAGE_LIMIT - sentCount),
+      isUnavailable,
+      unavailableReason,
     };
   }
 
@@ -397,7 +413,11 @@ export class MessageService {
         .from(profiles)
         .where(inArray(profiles.userId, partnerIds)),
       db
-        .select({ id: users.id, lastActiveAt: users.lastActiveAt })
+        .select({
+          id: users.id,
+          status: users.status,
+          lastActiveAt: users.lastActiveAt,
+        })
         .from(users)
         .where(inArray(users.id, partnerIds)),
       db
@@ -485,17 +505,23 @@ export class MessageService {
           (record) => record.conversationId === membership.conversationId,
         )?.unreadCount ?? 0;
       const lastActivityAt = latestMessage?.createdAt ?? membership.updatedAt;
+      const isUnavailable = !account || account.status !== "active";
 
       return [
         {
           conversationId: membership.conversationId,
           partner: {
             id: partnerId,
-            name: profile?.name || "Matched User",
-            primaryPhoto: photo?.url ?? null,
-            isOnline: account?.lastActiveAt
-              ? Date.now() - account.lastActiveAt.getTime() < 10 * 60 * 1000
-              : false,
+            name: isUnavailable
+              ? "Account unavailable"
+              : profile?.name || "Matched User",
+            primaryPhoto: isUnavailable ? null : (photo?.url ?? null),
+            isOnline: isUnavailable
+              ? false
+              : account?.lastActiveAt
+                ? Date.now() - account.lastActiveAt.getTime() < 10 * 60 * 1000
+                : false,
+            isUnavailable,
           },
           lastMessage: latestMessage
             ? {
@@ -520,6 +546,8 @@ export class MessageService {
                   record.conversationId === membership.conversationId,
               )?.sentCount ?? 0),
             ),
+          isUnavailable,
+          unavailableReason: isUnavailable ? "Account unavailable" : undefined,
         },
       ];
     });

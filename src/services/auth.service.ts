@@ -9,6 +9,7 @@ import { generateOTP, sendSmsOTP } from "../utils/otp";
 import { generateTokens, verifyRefreshToken } from "../utils/jwt";
 import AuthRepository from "../repositories/auth.repository";
 import AccountRepository from "../repositories/account.repository";
+import { SocketService } from "./socket.service";
 
 import type {
   AppError,
@@ -431,12 +432,28 @@ export class AuthService {
    */
   static async logout({
     refreshToken,
-    userId: _userId,
+    userId,
+    pushToken,
   }: LogoutParams): Promise<{ success: boolean; message: string }> {
+    let resolvedUserId = userId;
+
     if (refreshToken) {
-      await AuthRepository.revokeSessionByRefreshTokenHash(
-        AuthService.hashRefreshToken(refreshToken),
-      );
+      const tokenHash = AuthService.hashRefreshToken(refreshToken);
+      if (!resolvedUserId) {
+        const session =
+          await AuthRepository.findSessionByRefreshTokenHash(tokenHash);
+        resolvedUserId = session?.userId;
+      }
+      await AuthRepository.revokeSessionByRefreshTokenHash(tokenHash);
+    }
+
+    await AuthRepository.revokeDeviceTokens({
+      userId: resolvedUserId,
+      pushToken,
+    });
+
+    if (resolvedUserId) {
+      SocketService.disconnectUser(resolvedUserId);
     }
 
     return {

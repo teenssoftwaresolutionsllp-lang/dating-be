@@ -798,6 +798,7 @@ export class MatchService {
     const userAccounts = await db
       .select({
         id: users.id,
+        status: users.status,
         lastActiveAt: users.lastActiveAt,
       })
       .from(users)
@@ -812,15 +813,20 @@ export class MatchService {
       .from(conversations)
       .where(inArray(conversations.matchId, matchIds));
 
-    const items: MatchListItem[] = activeMatches.map((m) => {
+    const items: MatchListItem[] = activeMatches.flatMap((m) => {
       const otherId = m.user1Id === userId ? m.user2Id : m.user1Id;
+      const account = userAccounts.find((u) => u.id === otherId);
+      // Hide deactivated or deleted accounts from mutual Matches list
+      if (!account || account.status !== "active") {
+        return [];
+      }
+
       const prof = userProfiles.find((p) => p.userId === otherId);
       const userPhoto =
         photos.find((p) => p.userId === otherId && p.isPrimary) ||
         photos.find((p) => p.userId === otherId);
       const edu = edus.find((e) => e.userId === otherId);
       const kyc = kycs.find((k) => k.userId === otherId);
-      const account = userAccounts.find((u) => u.id === otherId);
       const conv = activeConvs.find((c) => c.matchId === m.id);
 
       const isOnline = account?.lastActiveAt
@@ -834,29 +840,31 @@ export class MatchService {
         isKycVerified: kyc?.status === "verified",
       });
 
-      return {
-        matchId: m.id,
-        matchedAt: m.matchedAt,
-        status: m.status,
-        hasChatStarted: Boolean(conv),
-        conversationId: conv?.id || null,
-        user: {
-          id: otherId,
-          name: prof?.name || "Matched User",
-          age: calculateAge(prof?.dateOfBirth),
-          heightFt: formatHeightToFeet(prof?.heightCm),
-          city: prof?.city || null,
-          primaryPhoto: userPhoto?.url || null,
-          isOnline,
-          trustScore,
-          education: edu
-            ? {
-              qualification: edu.qualification,
-              profession: edu.profession,
-            }
-            : null,
+      return [
+        {
+          matchId: m.id,
+          matchedAt: m.matchedAt,
+          status: m.status,
+          hasChatStarted: Boolean(conv),
+          conversationId: conv?.id || null,
+          user: {
+            id: otherId,
+            name: prof?.name || "Matched User",
+            age: calculateAge(prof?.dateOfBirth),
+            heightFt: formatHeightToFeet(prof?.heightCm),
+            city: prof?.city || null,
+            primaryPhoto: userPhoto?.url || null,
+            isOnline,
+            trustScore,
+            education: edu
+              ? {
+                qualification: edu.qualification,
+                profession: edu.profession,
+              }
+              : null,
+          },
         },
-      };
+      ];
     });
 
     return { items, total: items.length, page, limit };
@@ -980,11 +988,18 @@ export class MatchService {
       ]),
     );
 
-    const swiperProfiles = await db
-      .select({ ...getTableColumns(profiles), city: locations.city })
-      .from(profiles)
-      .leftJoin(locations, eq(profiles.locationId, locations.id))
-      .where(inArray(profiles.userId, swiperIds));
+    const [activeAccounts, swiperProfiles] = await Promise.all([
+      db
+        .select({ id: users.id })
+        .from(users)
+        .where(and(inArray(users.id, swiperIds), eq(users.status, "active"))),
+      db
+        .select({ ...getTableColumns(profiles), city: locations.city })
+        .from(profiles)
+        .leftJoin(locations, eq(profiles.locationId, locations.id))
+        .where(inArray(profiles.userId, swiperIds)),
+    ]);
+    const activeSwiperIds = new Set(activeAccounts.map((u) => u.id));
 
     const photos = await db
       .select({
@@ -1007,7 +1022,10 @@ export class MatchService {
       .from(kycVerifications)
       .where(inArray(kycVerifications.userId, swiperIds));
 
-    const items = receivedSwipes.map((s) => {
+    const items = receivedSwipes.flatMap((s) => {
+      if (!activeSwiperIds.has(s.swiperId)) {
+        return [];
+      }
       const prof = swiperProfiles.find((p) => p.userId === s.swiperId);
       const photo = photos.find((p) => p.userId === s.swiperId);
       const kyc = kycs.find((k) => k.userId === s.swiperId);
@@ -1019,19 +1037,21 @@ export class MatchService {
         isKycVerified: kyc?.status === "verified",
       });
 
-      return {
-        userId: s.swiperId,
-        name: prof?.name || "Admirer",
-        age: calculateAge(prof?.dateOfBirth),
-        city: prof?.city || null,
-        photo: photo?.url || null,
-        action: s.action,
-        likedAt: s.createdAt,
-        isSeen: Boolean(s.seenAt),
-        trustScore,
-        isMatched: activeMatchByPartnerId.has(s.swiperId),
-        matchId: activeMatchByPartnerId.get(s.swiperId) ?? null,
-      };
+      return [
+        {
+          userId: s.swiperId,
+          name: prof?.name || "Admirer",
+          age: calculateAge(prof?.dateOfBirth),
+          city: prof?.city || null,
+          photo: photo?.url || null,
+          action: s.action,
+          likedAt: s.createdAt,
+          isSeen: Boolean(s.seenAt),
+          trustScore,
+          isMatched: activeMatchByPartnerId.has(s.swiperId),
+          matchId: activeMatchByPartnerId.get(s.swiperId) ?? null,
+        },
+      ];
     });
 
     const unreadCount = items.filter(
@@ -1165,11 +1185,18 @@ export class MatchService {
 
     const targetIds = sentSwipes.map((s) => s.targetUserId);
 
-    const targetProfiles = await db
-      .select({ ...getTableColumns(profiles), city: locations.city })
-      .from(profiles)
-      .leftJoin(locations, eq(profiles.locationId, locations.id))
-      .where(inArray(profiles.userId, targetIds));
+    const [activeAccounts, targetProfiles] = await Promise.all([
+      db
+        .select({ id: users.id })
+        .from(users)
+        .where(and(inArray(users.id, targetIds), eq(users.status, "active"))),
+      db
+        .select({ ...getTableColumns(profiles), city: locations.city })
+        .from(profiles)
+        .leftJoin(locations, eq(profiles.locationId, locations.id))
+        .where(inArray(profiles.userId, targetIds)),
+    ]);
+    const activeTargetIds = new Set(activeAccounts.map((u) => u.id));
 
     const photos = await db
       .select({
@@ -1197,7 +1224,10 @@ export class MatchService {
       .from(kycVerifications)
       .where(inArray(kycVerifications.userId, targetIds));
 
-    const items = sentSwipes.map((s) => {
+    const items = sentSwipes.flatMap((s) => {
+      if (!activeTargetIds.has(s.targetUserId)) {
+        return [];
+      }
       const prof = targetProfiles.find((p) => p.userId === s.targetUserId);
       const photo = photos.find((p) => p.userId === s.targetUserId);
       const edu = edus.find((e) => e.userId === s.targetUserId);
@@ -1210,18 +1240,20 @@ export class MatchService {
         isKycVerified: kyc?.status === "verified",
       });
 
-      return {
-        userId: s.targetUserId,
-        name: prof?.name || "Liked User",
-        age: calculateAge(prof?.dateOfBirth),
-        city: prof?.city || null,
-        location: prof?.city ? `Lives in ${prof.city}` : null,
-        profession: edu?.profession || edu?.occupation || null,
-        photo: photo?.url || null,
-        action: s.action,
-        likedAt: s.createdAt,
-        trustScore,
-      };
+      return [
+        {
+          userId: s.targetUserId,
+          name: prof?.name || "Liked User",
+          age: calculateAge(prof?.dateOfBirth),
+          city: prof?.city || null,
+          location: prof?.city ? `Lives in ${prof.city}` : null,
+          profession: edu?.profession || edu?.occupation || null,
+          photo: photo?.url || null,
+          action: s.action,
+          likedAt: s.createdAt,
+          trustScore,
+        },
+      ];
     });
 
     return { items, total: items.length, page, limit };
@@ -1732,7 +1764,11 @@ export class MatchService {
 
     const viewerIds = viewRows.map((row) => row.viewerId);
 
-    const [viewerProfiles, photos] = await Promise.all([
+    const [activeAccounts, viewerProfiles, photos] = await Promise.all([
+      db
+        .select({ id: users.id })
+        .from(users)
+        .where(and(inArray(users.id, viewerIds), eq(users.status, "active"))),
       db
         .select({
           userId: profiles.userId,
@@ -1755,21 +1791,27 @@ export class MatchService {
           ),
         ),
     ]);
+    const activeViewerIds = new Set(activeAccounts.map((u) => u.id));
 
-    return viewRows.map((row) => {
+    return viewRows.flatMap((row) => {
+      if (!activeViewerIds.has(row.viewerId)) {
+        return [];
+      }
       const prof = viewerProfiles.find((p) => p.userId === row.viewerId);
       const photo = photos.find((p) => p.userId === row.viewerId);
       const citySuffix = prof?.city ? ` • ${prof.city}` : "";
 
-      return {
-        id: row.viewerId,
-        name: prof?.name || "Someone",
-        subtitle: `Viewed your profile${citySuffix}`,
-        time: formatViewerTimeAgo(row.viewedAt),
-        avatar: photo?.url || null,
-        viewedAt: row.viewedAt.toISOString(),
-        isSeen: Boolean(row.seenAt),
-      };
+      return [
+        {
+          id: row.viewerId,
+          name: prof?.name || "Someone",
+          subtitle: `Viewed your profile${citySuffix}`,
+          time: formatViewerTimeAgo(row.viewedAt),
+          avatar: photo?.url || null,
+          viewedAt: row.viewedAt.toISOString(),
+          isSeen: Boolean(row.seenAt),
+        },
+      ];
     });
   }
 

@@ -3,7 +3,7 @@ import { getMessaging, type SendResponse } from "firebase-admin/messaging";
 import fs from "node:fs";
 import path from "node:path";
 import { db } from "../db/index";
-import { userDevices } from "../db/schema";
+import { userDevices, users } from "../db/schema";
 import { eq, and, isNull, inArray } from "drizzle-orm";
 
 let isFirebaseInitialized = false;
@@ -146,9 +146,11 @@ export async function sendCallPushNotification({
     const devices = await db
       .select({ pushToken: userDevices.deviceToken })
       .from(userDevices)
+      .innerJoin(users, eq(users.id, userDevices.userId))
       .where(
         and(
           eq(userDevices.userId, receiverId),
+          eq(users.status, "active"),
           isNull(userDevices.revokedAt)
         )
       );
@@ -175,6 +177,7 @@ export async function sendCallPushNotification({
         channelId: "calls",
         data: {
           type: "INCOMING_CALL",
+          recipientId: receiverId,
           callId,
           channelName,
           callType,
@@ -202,6 +205,7 @@ export async function sendCallPushNotification({
         },
         data: {
           type: "INCOMING_CALL",
+          recipientId: receiverId,
           callId,
           channelName,
           callType,
@@ -282,9 +286,11 @@ export async function sendPushNotification({
     const devices = await db
       .select({ pushToken: userDevices.deviceToken })
       .from(userDevices)
+      .innerJoin(users, eq(users.id, userDevices.userId))
       .where(
         and(
           eq(userDevices.userId, userId),
+          eq(users.status, "active"),
           isNull(userDevices.revokedAt)
         )
       );
@@ -293,6 +299,11 @@ export async function sendPushNotification({
 
     const tokens = devices.map((d) => d.pushToken).filter(Boolean);
     if (!tokens.length) return;
+
+    const enrichedData: Record<string, string> = {
+      ...data,
+      recipientId: userId,
+    };
 
     const expoTokens = tokens.filter(isExpoPushToken);
     const fcmTokens = tokens.filter((t) => !isExpoPushToken(t));
@@ -306,7 +317,7 @@ export async function sendPushNotification({
         sound: "default",
         priority: "high",
         channelId: "default",
-        data,
+        data: enrichedData,
       }));
       await sendExpoPushNotifications(expoMessages);
     }
@@ -324,7 +335,7 @@ export async function sendPushNotification({
           title,
           body,
         },
-        data,
+        data: enrichedData,
         android: {
           priority: "high",
           notification: {

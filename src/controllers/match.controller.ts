@@ -155,9 +155,34 @@ export class MatchController {
       meta: {
         activeUserId: userId,
         total: result.total,
+        unreadCount: result.unreadCount,
         page: result.page,
         limit: result.limit,
       },
+    });
+  }
+
+  /**
+   * POST /api/v1/matches/likes/mark-seen
+   * Mark all currently received likes as seen by the user
+   */
+  static async markLikesSeen(req: Request, res: Response): Promise<Response> {
+    const userId = await resolveUserId(req);
+
+    if (!userId) {
+      return ApiResponse.error(res, {
+        statusCode: 401,
+        message: "Unauthorized",
+        code: "UNAUTHORIZED",
+      });
+    }
+
+    const updatedCount = await MatchService.markLikesSeen(userId);
+
+    return ApiResponse.success(res, {
+      statusCode: 200,
+      message: "Received likes marked as seen",
+      data: { updatedCount },
     });
   }
 
@@ -441,6 +466,33 @@ export class MatchController {
       statusCode: 200,
       message: "Profile viewers retrieved successfully",
       data: viewers,
+    });
+  }
+
+  /**
+   * POST /api/v1/matches/profile-viewers/mark-seen
+   * Mark all unseen profile views as seen by the owner
+   */
+  static async markProfileViewersSeen(
+    req: Request,
+    res: Response,
+  ): Promise<Response> {
+    const userId = await resolveUserId(req);
+
+    if (!userId) {
+      return ApiResponse.error(res, {
+        statusCode: 401,
+        message: "Unauthorized",
+        code: "UNAUTHORIZED",
+      });
+    }
+
+    const updatedCount = await MatchService.markProfileViewersSeen(userId);
+
+    return ApiResponse.success(res, {
+      statusCode: 200,
+      message: "Profile viewers marked as seen",
+      data: { updatedCount },
     });
   }
 }

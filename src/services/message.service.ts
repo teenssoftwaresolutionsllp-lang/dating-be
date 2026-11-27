@@ -274,33 +274,23 @@ export class MessageService {
       .orderBy(desc(messages.createdAt))
       .limit(pageLimit)
       .offset((currentPage - 1) * pageLimit);
-    const incomingMessageIds = rows
-      .filter((message) => message.senderId !== userId)
-      .map((message) => message.id);
 
-    if (incomingMessageIds.length > 0) {
-      await db
-        .insert(messageReads)
-        .values(
-          incomingMessageIds.map((messageId) => ({ messageId, userId })),
-        )
-        .onConflictDoNothing();
-    }
+    await this.markConversationAsRead(userId, otherUserId, conversation.conversationId);
 
     const receipts =
       rows.length > 0
         ? await db
-            .select({
-              messageId: messageReads.messageId,
-              userId: messageReads.userId,
-            })
-            .from(messageReads)
-            .where(
-              inArray(
-                messageReads.messageId,
-                rows.map((message) => message.id),
-              ),
-            )
+          .select({
+            messageId: messageReads.messageId,
+            userId: messageReads.userId,
+          })
+          .from(messageReads)
+          .where(
+            inArray(
+              messageReads.messageId,
+              rows.map((message) => message.id),
+            ),
+          )
         : [];
     const readByUser = new Set(
       receipts.map((receipt) => `${receipt.messageId}:${receipt.userId}`),
@@ -509,13 +499,13 @@ export class MessageService {
           },
           lastMessage: latestMessage
             ? {
-                id: latestMessage.id,
-                content: latestMessage.content,
-                senderId: latestMessage.senderId,
-                messageType: latestMessage.messageType,
-                createdAt: latestMessage.createdAt,
-                isOwnMessage: latestMessage.senderId === userId,
-              }
+              id: latestMessage.id,
+              content: latestMessage.content,
+              senderId: latestMessage.senderId,
+              messageType: latestMessage.messageType,
+              createdAt: latestMessage.createdAt,
+              isOwnMessage: latestMessage.senderId === userId,
+            }
             : null,
           unreadCount,
           lastActivityAt,
@@ -523,13 +513,13 @@ export class MessageService {
           messagesRemaining: membership.matchStatus === "active"
             ? null
             : Math.max(
-                0,
-                PRE_MATCH_MESSAGE_LIMIT -
-                  (outgoingCounts.find(
-                    (record) =>
-                      record.conversationId === membership.conversationId,
-                  )?.sentCount ?? 0),
-              ),
+              0,
+              PRE_MATCH_MESSAGE_LIMIT -
+              (outgoingCounts.find(
+                (record) =>
+                  record.conversationId === membership.conversationId,
+              )?.sentCount ?? 0),
+            ),
         },
       ];
     });
@@ -630,6 +620,51 @@ export class MessageService {
           .where(eq(matches.id, match.id));
       }
     });
+  }
+
+  /**
+   * Mark every unread incoming message in a conversation as read by userId.
+   */
+  static async markConversationAsRead(
+    userId: string,
+    otherUserId: string,
+    knownConversationId?: string,
+  ): Promise<{ conversationId: string | null; markedCount: number }> {
+    const conversationId =
+      knownConversationId ?? (await findConversation(userId, otherUserId))?.conversationId;
+    if (!conversationId) {
+      return { conversationId: null, markedCount: 0 };
+    }
+
+    const unreadRows = await db
+      .select({ messageId: messages.id })
+      .from(messages)
+      .leftJoin(
+        messageReads,
+        and(
+          eq(messageReads.messageId, messages.id),
+          eq(messageReads.userId, userId),
+        ),
+      )
+      .where(
+        and(
+          eq(messages.conversationId, conversationId),
+          isNull(messages.deletedAt),
+          ne(messages.senderId, userId),
+          isNull(messageReads.messageId),
+        ),
+      );
+
+    if (unreadRows.length === 0) {
+      return { conversationId, markedCount: 0 };
+    }
+
+    await db
+      .insert(messageReads)
+      .values(unreadRows.map((row) => ({ messageId: row.messageId, userId })))
+      .onConflictDoNothing();
+
+    return { conversationId, markedCount: unreadRows.length };
   }
 
   /**

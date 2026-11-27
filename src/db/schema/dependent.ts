@@ -266,6 +266,7 @@ export const swipes = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     action: varchar("action", { length: 20 }).notNull(), // like, reject, super_like
     source: varchar("source", { length: 30 }), // discovery, boost, recommendation
+    seenAt: timestamp("seen_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -668,3 +669,45 @@ export type PushNotificationDelivery =
   typeof pushNotificationDeliveries.$inferSelect;
 export type NewPushNotificationDelivery =
   typeof pushNotificationDeliveries.$inferInsert;
+
+/**
+ * profile_views
+ * Persistent record of profile visits with seen state for unread badges.
+ */
+export const profileViews = pgTable(
+  "profile_views",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    viewerId: uuid("viewer_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    viewedUserId: uuid("viewed_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    viewedAt: timestamp("viewed_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    seenAt: timestamp("seen_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("profile_views_viewer_viewed_unique_idx").on(
+      table.viewerId,
+      table.viewedUserId,
+    ),
+    index("profile_views_owner_viewed_at_idx").on(
+      table.viewedUserId,
+      table.viewedAt,
+    ),
+    index("profile_views_owner_seen_at_idx").on(
+      table.viewedUserId,
+      table.seenAt,
+    ),
+    check(
+      "profile_views_prevent_self_view_check",
+      sql`${table.viewerId} <> ${table.viewedUserId}`,
+    ),
+  ],
+);
+
+export type ProfileView = typeof profileViews.$inferSelect;
+export type NewProfileView = typeof profileViews.$inferInsert;

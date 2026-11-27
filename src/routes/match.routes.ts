@@ -174,6 +174,7 @@ router.delete("/:matchId", asyncHandler(MatchController.unmatch));
  *         description: Unauthorized
  */
 router.get("/likes", asyncHandler(MatchController.getLikesReceived));
+router.post("/likes/mark-seen", asyncHandler(MatchController.markLikesSeen));
 
 /**
  * @swagger
@@ -290,5 +291,9 @@ router.post("/profile-view", asyncHandler(MatchController.recordProfileView));
  *         description: Unauthorized
  */
 router.get("/profile-viewers", asyncHandler(MatchController.getProfileViewers));
+router.post(
+  "/profile-viewers/mark-seen",
+  asyncHandler(MatchController.markProfileViewersSeen),
+);
 
 export default router;

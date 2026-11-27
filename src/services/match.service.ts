@@ -18,6 +18,7 @@ import {
   conversationMembers,
   blocks,
   reports,
+  profileViews,
 } from "../db/schema";
 import {
   eq,
@@ -41,6 +42,37 @@ import {
 } from "../utils/trustScore";
 import { sendPushNotification } from "./notification.service";
 import { SocketService } from "./socket.service";
+
+function formatViewerTimeAgo(date: Date | string): string {
+  const viewed = new Date(date);
+  if (Number.isNaN(viewed.getTime())) return "Recently";
+
+  const diffMs = Date.now() - viewed.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (viewed.toDateString() === yesterday.toDateString()) {
+    return `Yesterday, ${viewed.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+    })}`;
+  }
+
+  return viewed.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 function getOppositeGender(gender: string | null | undefined): string | null {
   switch (gender?.trim().toLowerCase()) {
@@ -485,7 +517,13 @@ export class MatchService {
     if (existingSwipe) {
       await db
         .update(swipes)
-        .set({ action: direction, updatedAt: new Date() })
+        .set({
+          action: direction,
+          updatedAt: new Date(),
+          ...(direction === "like" || direction === "superlike"
+            ? { seenAt: null }
+            : {}),
+        })
         .where(eq(swipes.id, existingSwipe.id));
     } else {
       await db.insert(swipes).values({
@@ -895,6 +933,7 @@ export class MatchService {
         swiperId: swipes.userId,
         createdAt: swipes.createdAt,
         action: swipes.action,
+        seenAt: swipes.seenAt,
       })
       .from(swipes)
       .where(
@@ -908,7 +947,7 @@ export class MatchService {
       .offset((page - 1) * limit);
 
     if (receivedSwipes.length === 0) {
-      return { items: [], total: 0, page, limit };
+      return { items: [], total: 0, unreadCount: 0, page, limit };
     }
 
     const swiperIds = receivedSwipes.map((s) => s.swiperId);
@@ -988,13 +1027,37 @@ export class MatchService {
         photo: photo?.url || null,
         action: s.action,
         likedAt: s.createdAt,
+        isSeen: Boolean(s.seenAt),
         trustScore,
         isMatched: activeMatchByPartnerId.has(s.swiperId),
         matchId: activeMatchByPartnerId.get(s.swiperId) ?? null,
       };
     });
 
-    return { items, total: items.length, page, limit };
+    const unreadCount = items.filter(
+      (item) => !item.isMatched && !item.isSeen,
+    ).length;
+
+    return { items, total: items.length, unreadCount, page, limit };
+  }
+
+  /**
+   * 5b. MARK RECEIVED LIKES AS SEEN
+   */
+  static async markLikesSeen(userId: string): Promise<number> {
+    const updated = await db
+      .update(swipes)
+      .set({ seenAt: new Date() })
+      .where(
+        and(
+          eq(swipes.targetUserId, userId),
+          or(eq(swipes.action, "like"), eq(swipes.action, "superlike")),
+          isNull(swipes.seenAt),
+        ),
+      )
+      .returning({ id: swipes.id });
+
+    return updated.length;
   }
 
   /**
@@ -1576,19 +1639,6 @@ export class MatchService {
     await db.delete(swipes).where(eq(swipes.userId, userId));
   }
 
-  // In-memory store for recent profile views (per profile owner)
-  private static profileViewersMap: Map<
-    string,
-    Array<{
-      id: string;
-      name: string;
-      subtitle: string;
-      time: string;
-      avatar: string | null;
-      viewedAt: Date;
-    }>
-  > = new Map();
-
   /**
    * 13. RECORD PROFILE VIEW & EMIT REAL-TIME NOTIFICATION
    */
@@ -1597,46 +1647,66 @@ export class MatchService {
       return null;
     }
 
-    const [viewerProfile] = await db
-      .select({ name: profiles.name, bio: profiles.bio })
-      .from(profiles)
-      .where(eq(profiles.userId, viewerId))
-      .limit(1);
-
-    const [primaryPhoto] = await db
-      .select({ url: profilePhotos.url })
-      .from(profilePhotos)
-      .where(
-        and(
-          eq(profilePhotos.userId, viewerId),
-          eq(profilePhotos.isPrimary, true),
-        ),
-      )
-      .limit(1);
-
     const now = new Date();
+
+    await db
+      .insert(profileViews)
+      .values({
+        viewerId,
+        viewedUserId,
+        viewedAt: now,
+        seenAt: null,
+      })
+      .onConflictDoUpdate({
+        target: [profileViews.viewerId, profileViews.viewedUserId],
+        set: {
+          viewedAt: now,
+          seenAt: null,
+        },
+      });
+
+    const [[viewerProfile], [primaryPhoto], unseenRows] = await Promise.all([
+      db
+        .select({ name: profiles.name, city: locations.city })
+        .from(profiles)
+        .leftJoin(locations, eq(profiles.locationId, locations.id))
+        .where(eq(profiles.userId, viewerId))
+        .limit(1),
+      db
+        .select({ url: profilePhotos.url })
+        .from(profilePhotos)
+        .where(
+          and(
+            eq(profilePhotos.userId, viewerId),
+            eq(profilePhotos.isPrimary, true),
+          ),
+        )
+        .limit(1),
+      db
+        .select({ id: profileViews.id })
+        .from(profileViews)
+        .where(
+          and(
+            eq(profileViews.viewedUserId, viewedUserId),
+            isNull(profileViews.seenAt),
+          ),
+        ),
+    ]);
+
+    const citySuffix = viewerProfile?.city ? ` • ${viewerProfile.city}` : "";
     const viewerItem = {
       id: viewerId,
       name: viewerProfile?.name || "Someone",
-      subtitle: viewerProfile?.bio || "Viewed your profile",
-      time: "Just now",
+      subtitle: `Viewed your profile${citySuffix}`,
+      time: formatViewerTimeAgo(now),
       avatar: primaryPhoto?.url || null,
-      viewedAt: now,
+      viewedAt: now.toISOString(),
+      isSeen: false,
+      unreadCount: unseenRows.length,
     };
 
-    const existing = this.profileViewersMap.get(viewedUserId) || [];
-    const updated = [
-      viewerItem,
-      ...existing.filter((v) => v.id !== viewerId),
-    ].slice(0, 50);
-    this.profileViewersMap.set(viewedUserId, updated);
-
-    // Emit real-time WebSocket event to the profile owner!
-    SocketService.emitToUser(viewedUserId, "profile_viewed", {
-      ...viewerItem,
-      viewedAt: now.toISOString(),
-      unreadCount: updated.length,
-    });
+    // Emit real-time WebSocket event to the profile owner
+    SocketService.emitToUser(viewedUserId, "profile_viewed", viewerItem);
 
     return viewerItem;
   }
@@ -1645,7 +1715,80 @@ export class MatchService {
    * 14. GET RECENT PROFILE VIEWERS
    */
   static async getProfileViewers(userId: string) {
-    return this.profileViewersMap.get(userId) || [];
+    const viewRows = await db
+      .select({
+        viewerId: profileViews.viewerId,
+        viewedAt: profileViews.viewedAt,
+        seenAt: profileViews.seenAt,
+      })
+      .from(profileViews)
+      .where(eq(profileViews.viewedUserId, userId))
+      .orderBy(desc(profileViews.viewedAt))
+      .limit(50);
+
+    if (viewRows.length === 0) {
+      return [];
+    }
+
+    const viewerIds = viewRows.map((row) => row.viewerId);
+
+    const [viewerProfiles, photos] = await Promise.all([
+      db
+        .select({
+          userId: profiles.userId,
+          name: profiles.name,
+          city: locations.city,
+        })
+        .from(profiles)
+        .leftJoin(locations, eq(profiles.locationId, locations.id))
+        .where(inArray(profiles.userId, viewerIds)),
+      db
+        .select({
+          userId: profilePhotos.userId,
+          url: profilePhotos.url,
+        })
+        .from(profilePhotos)
+        .where(
+          and(
+            inArray(profilePhotos.userId, viewerIds),
+            eq(profilePhotos.isPrimary, true),
+          ),
+        ),
+    ]);
+
+    return viewRows.map((row) => {
+      const prof = viewerProfiles.find((p) => p.userId === row.viewerId);
+      const photo = photos.find((p) => p.userId === row.viewerId);
+      const citySuffix = prof?.city ? ` • ${prof.city}` : "";
+
+      return {
+        id: row.viewerId,
+        name: prof?.name || "Someone",
+        subtitle: `Viewed your profile${citySuffix}`,
+        time: formatViewerTimeAgo(row.viewedAt),
+        avatar: photo?.url || null,
+        viewedAt: row.viewedAt.toISOString(),
+        isSeen: Boolean(row.seenAt),
+      };
+    });
+  }
+
+  /**
+   * 15. MARK PROFILE VIEWERS AS SEEN
+   */
+  static async markProfileViewersSeen(userId: string): Promise<number> {
+    const updated = await db
+      .update(profileViews)
+      .set({ seenAt: new Date() })
+      .where(
+        and(
+          eq(profileViews.viewedUserId, userId),
+          isNull(profileViews.seenAt),
+        ),
+      )
+      .returning({ id: profileViews.id });
+
+    return updated.length;
   }
 }
 

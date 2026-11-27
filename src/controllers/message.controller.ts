@@ -126,6 +126,10 @@ export class MessageController {
       limit,
     });
 
+    SocketService.emitToUser(currentUserId, "messages_read", {
+      partnerId: otherUserId,
+    });
+
     return ApiResponse.success(res, {
       statusCode: 200,
       message: "Conversation retrieved successfully",
@@ -197,6 +201,47 @@ export class MessageController {
       statusCode: 200,
       message: "Conversations retrieved successfully",
       data: { conversations },
+    });
+  }
+
+  /**
+   * POST /api/v1/messages/:userId/read
+   * Explicitly mark all incoming messages from a partner as read.
+   */
+  static async markAsRead(req: Request, res: Response): Promise<Response> {
+    const currentUserId = req.user?.id;
+    const otherUserId = String(req.params.userId);
+
+    if (!currentUserId) {
+      return ApiResponse.error(res, {
+        statusCode: 401,
+        message: "Unauthorized",
+        code: "UNAUTHORIZED",
+      });
+    }
+
+    if (!otherUserId || otherUserId === "undefined") {
+      return ApiResponse.error(res, {
+        statusCode: 400,
+        message: "Invalid user ID",
+        code: "VALIDATION_ERROR",
+      });
+    }
+
+    const result = await MessageService.markConversationAsRead(
+      currentUserId,
+      otherUserId,
+    );
+
+    SocketService.emitToUser(currentUserId, "messages_read", {
+      partnerId: otherUserId,
+      conversationId: result.conversationId,
+    });
+
+    return ApiResponse.success(res, {
+      statusCode: 200,
+      message: "Conversation marked as read",
+      data: result,
     });
   }
 

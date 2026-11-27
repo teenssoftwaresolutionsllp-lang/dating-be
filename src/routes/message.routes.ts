@@ -88,6 +88,29 @@ router.post("/:userId/like", asyncHandler(MessageController.likeConversation));
 
 /**
  * @swagger
+ * /api/v1/messages/{userId}/read:
+ *   post:
+ *     summary: Mark all incoming messages in a conversation as read
+ *     tags: [Messages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: User ID of the conversation partner
+ *     responses:
+ *       200:
+ *         description: Conversation marked as read
+ *       401:
+ *         description: Unauthorized
+ */
+router.post("/:userId/read", asyncHandler(MessageController.markAsRead));
+
+/**
+ * @swagger
  * /api/v1/messages/{userId}:
  *   get:
  *     summary: Get conversation messages with a specific user

@@ -476,6 +476,48 @@ router.get("/photos", authenticate, asyncHandler(ProfileController.getPhotos));
 /**
  * @swagger
  * /api/v1/profile/photos/{photoId}:
+ *   patch:
+ *     summary: Replace/update an existing profile or gallery photo
+ *     tags: [Profile]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: photoId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Photo ID to replace
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [photo]
+ *             properties:
+ *               photo:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Photo updated successfully
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Photo not found
+ */
+router.patch(
+  "/photos/:photoId",
+  authenticate,
+  uploadProfilePhoto.single("photo"),
+  handlePhotoUploadError,
+  asyncHandler(ProfileController.replacePhoto),
+);
+
+/**
+ * @swagger
+ * /api/v1/profile/photos/{photoId}:
  *   delete:
  *     summary: Delete a profile photo
  *     tags: [Profile]

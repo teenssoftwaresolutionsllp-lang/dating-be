@@ -124,69 +124,116 @@ class ProfileService {
     return undefined;
   }
 
+  private async validatePhotoCandidate(
+    file: Express.Multer.File,
+    isPrimary: boolean,
+    selfieBuffer?: Buffer,
+  ): Promise<void> {
+    const aiCheck = await RekognitionService.detectAiOrSyntheticImage(
+      file.buffer,
+    );
+    if (aiCheck.isAiGenerated) {
+      const error = new Error(
+        aiCheck.reason ||
+        "AI-generated or synthetic images are not supported. Please upload a real, genuine photo of yourself.",
+      ) as AppError;
+      error.statusCode = 400;
+      error.code = "AI_GENERATED_IMAGE_NOT_SUPPORTED";
+      throw error;
+    }
+
+    const validation = validateProfilePhoto(
+      file.buffer,
+      file.originalname,
+      isPrimary,
+    );
+    if (!validation.isValid) {
+      const error = new Error(
+        validation.error || "Invalid profile photo",
+      ) as AppError;
+      error.statusCode = 400;
+      error.code = validation.code || "INVALID_PROFILE_PHOTO";
+      throw error;
+    }
+
+    if (isPrimary && selfieBuffer) {
+      const match = await RekognitionService.compareFaces(
+        selfieBuffer,
+        file.buffer,
+        undefined,
+        "main_profile",
+      );
+      if (!match.isMatch) {
+        const error = new Error(
+          match.error ||
+          "Main profile photo does not match your verified selfie. Please upload a clear photo of yourself.",
+        ) as AppError;
+        error.statusCode = 400;
+        error.code = "MAIN_PROFILE_MISMATCH";
+        throw error;
+      }
+    }
+  }
+
+  private async cleanupCloudinaryAssetQuietly(
+    storageKey: string | null | undefined,
+  ): Promise<void> {
+    if (!storageKey) return;
+    try {
+      await deleteCloudinaryAsset(storageKey);
+    } catch (cleanupError) {
+      console.warn(
+        "[ProfileService] Failed to delete replaced photo asset:",
+        cleanupError,
+      );
+    }
+  }
+
   async addPhotos(
     userId: string,
     files: Express.Multer.File[],
     isExplicitPrimary?: boolean,
+    replaceAll?: boolean,
   ) {
     // 1. Retrieve user's verified KYC selfie if available for face matching
     const selfieBuffer = await this.getKycSelfieBuffer(userId);
     const existingPhotos = await ProfileRepository.findPhotosByUserId(userId);
+    const existingPrimaryPhotos = existingPhotos.filter((p) => p.isPrimary);
+    const existingGalleryPhotos = existingPhotos.filter((p) => !p.isPrimary);
 
     // Primary photo determination:
-    // - User explicitly specifies isPrimary = true (e.g. from the "Me" page avatar change)
-    // - Initial onboarding when user has 0 photos -> index 0 is primary
+    // - User explicitly specifies isPrimary = true (e.g. from the "Me" page avatar change or onboarding)
+    // - Or user currently has no primary photo -> index 0 becomes primary
     const isUpdatingPrimary = Boolean(
-      isExplicitPrimary || existingPhotos.length === 0,
+      isExplicitPrimary || existingPrimaryPhotos.length === 0,
     );
+
+    const incomingGalleryCount = isUpdatingPrimary
+      ? Math.max(0, files.length - 1)
+      : files.length;
+
+    if (replaceAll) {
+      if (incomingGalleryCount > 3) {
+        const error = new Error(
+          "You can upload 1 main profile photo and up to 3 gallery photos.",
+        ) as AppError;
+        error.statusCode = 400;
+        error.code = "GALLERY_LIMIT_EXCEEDED";
+        throw error;
+      }
+    } else if (existingGalleryPhotos.length + incomingGalleryCount > 3) {
+      const error = new Error(
+        "Maximum 3 gallery photos are allowed in addition to your main profile photo. Update or delete an existing photo first.",
+      ) as AppError;
+      error.statusCode = 400;
+      error.code = "GALLERY_LIMIT_EXCEEDED";
+      throw error;
+    }
 
     // 2. Strict pre-upload validation: AI-generation check & selfie matching for primary photo
     for (const [index, file] of files.entries()) {
       const isPrimary = isUpdatingPrimary && index === 0;
-
-      // Check if photo is AI generated / synthetic
-      const aiCheck = await RekognitionService.detectAiOrSyntheticImage(file.buffer);
-      if (aiCheck.isAiGenerated) {
-        const error = new Error(
-          aiCheck.reason ||
-          "AI-generated or synthetic images are not supported. Please upload a real, genuine photo of yourself.",
-        ) as AppError;
-        error.statusCode = 400;
-        error.code = "AI_GENERATED_IMAGE_NOT_SUPPORTED";
-        throw error;
-      }
-
-      const validation = validateProfilePhoto(
-        file.buffer,
-        file.originalname,
-        isPrimary,
-      );
-      if (!validation.isValid) {
-        const error = new Error(
-          validation.error || "Invalid profile photo",
-        ) as AppError;
-        error.statusCode = 400;
-        error.code = validation.code || "INVALID_PROFILE_PHOTO";
-        throw error;
-      }
-
-      if (isPrimary && selfieBuffer) {
-        const match = await RekognitionService.compareFaces(
-          selfieBuffer,
-          file.buffer,
-          undefined,
-          "main_profile",
-        );
-        if (!match.isMatch) {
-          const error = new Error(
-            match.error ||
-            "Main profile photo does not match your verified selfie. Please upload a clear photo of yourself.",
-          ) as AppError;
-          error.statusCode = 400;
-          error.code = "MAIN_PROFILE_MISMATCH";
-          throw error;
-        }
-      }
+      await this.validatePhotoCandidate(file, isPrimary, selfieBuffer);
     }
 
     const uploadedAssets: Array<{
@@ -209,20 +256,33 @@ class ProfileService {
         });
       }
 
-      if (isUpdatingPrimary && existingPhotos.length > 0) {
-        // Demote previous primary photos
-        await ProfileRepository.unsetPrimaryPhotos(userId);
+      if (replaceAll && existingPhotos.length > 0) {
+        for (const oldPhoto of existingPhotos) {
+          await ProfileRepository.deleteProfilePhoto(userId, oldPhoto.id);
+          await this.cleanupCloudinaryAssetQuietly(oldPhoto.storageKey);
+        }
+      } else if (isUpdatingPrimary && existingPrimaryPhotos.length > 0) {
+        // Delete previous main profile photo(s) so replaced avatars never stack in Matches
+        for (const oldPrimary of existingPrimaryPhotos) {
+          await ProfileRepository.deleteProfilePhoto(userId, oldPrimary.id);
+          await this.cleanupCloudinaryAssetQuietly(oldPrimary.storageKey);
+        }
       }
 
+      const galleryOffset = replaceAll ? 0 : existingGalleryPhotos.length;
+      let galleryIndex = 0;
       const photos = [];
       for (const [index, asset] of uploadedAssets.entries()) {
         const isPhotoPrimary = isUpdatingPrimary && index === 0;
+        const displayOrder = isPhotoPrimary
+          ? 0
+          : galleryOffset + ++galleryIndex;
         photos.push(
           await ProfileRepository.createProfilePhoto({
             userId,
             storageKey: asset.publicId,
             url: asset.url,
-            displayOrder: isPhotoPrimary ? 0 : existingPhotos.length + index + 1,
+            displayOrder,
             isPrimary: isPhotoPrimary,
             verificationStatus: "pending",
             mimeType: asset.file.mimetype,
@@ -231,16 +291,76 @@ class ProfileService {
         );
       }
 
-      return photos;
+      await ProfileRepository.normalizeGalleryDisplayOrder(userId);
+      return ProfileRepository.findPhotosByUserId(userId);
     } catch (error) {
       for (const asset of uploadedAssets) {
-        try {
-          await deleteCloudinaryAsset(asset.publicId);
-        } catch (cleanupError) {
-          console.error("Failed to clean up Cloudinary photo:", cleanupError);
-        }
+        await this.cleanupCloudinaryAssetQuietly(asset.publicId);
       }
 
+      throw error;
+    }
+  }
+
+  async replacePhoto(
+    userId: string,
+    photoId: string,
+    file: Express.Multer.File,
+  ) {
+    const existingPhoto = await ProfileRepository.findProfilePhotoById(
+      userId,
+      photoId,
+    );
+
+    if (!existingPhoto) {
+      const error = new Error("Photo not found") as AppError;
+      error.statusCode = 404;
+      error.code = "PHOTO_NOT_FOUND";
+      throw error;
+    }
+
+    const selfieBuffer = existingPhoto.isPrimary
+      ? await this.getKycSelfieBuffer(userId)
+      : undefined;
+
+    await this.validatePhotoCandidate(
+      file,
+      existingPhoto.isPrimary,
+      selfieBuffer,
+    );
+
+    const uploadedAsset = await uploadProfilePhoto(
+      file.buffer,
+      userId,
+      file.originalname,
+    );
+
+    try {
+      const updated = await ProfileRepository.updateProfilePhoto(
+        userId,
+        photoId,
+        {
+          storageKey: uploadedAsset.public_id,
+          url: uploadedAsset.secure_url,
+          verificationStatus: "pending",
+          moderationStatus: "pending",
+          moderationReason: null,
+          mimeType: file.mimetype,
+          fileSizeBytes: file.size,
+        },
+      );
+
+      if (!updated) {
+        throw createNotFoundError("Photo not found");
+      }
+
+      if (existingPhoto.storageKey !== uploadedAsset.public_id) {
+        await this.cleanupCloudinaryAssetQuietly(existingPhoto.storageKey);
+      }
+
+      return updated;
+    } catch (error) {
+      await this.cleanupCloudinaryAssetQuietly(uploadedAsset.public_id);
       throw error;
     }
   }
@@ -259,6 +379,15 @@ class ProfileService {
       throw error;
     }
 
+    if (photo.isPrimary) {
+      const error = new Error(
+        "Your main profile photo cannot be deleted. Replace it directly instead.",
+      ) as AppError;
+      error.statusCode = 400;
+      error.code = "CANNOT_DELETE_PRIMARY_PHOTO";
+      throw error;
+    }
+
     try {
       await deleteCloudinaryAsset(photo.storageKey);
     } catch (error) {
@@ -273,6 +402,7 @@ class ProfileService {
     }
 
     await ProfileRepository.deleteProfilePhoto(userId, photoId);
+    await ProfileRepository.normalizeGalleryDisplayOrder(userId);
   }
 
   async getOnboardingStatus(userId: string): Promise<{
@@ -557,7 +687,7 @@ class ProfileService {
       if (spoofCheck.isSpoof) {
         const error = new Error(
           spoofCheck.reason ||
-            "Screen or spoofed selfie detected. Please take a live selfie of your real face.",
+          "Screen or spoofed selfie detected. Please take a live selfie of your real face.",
         ) as AppError;
         error.statusCode = 400;
         error.code = spoofCheck.code || "SCREEN_SPOOF_DETECTED";
@@ -755,7 +885,7 @@ class ProfileService {
     if (aiCheck.isAiGenerated) {
       const error = new Error(
         aiCheck.reason ||
-          "AI-generated or synthetic images are not supported. Please take a live camera selfie.",
+        "AI-generated or synthetic images are not supported. Please take a live camera selfie.",
       ) as AppError;
       error.statusCode = 400;
       error.code = "AI_GENERATED_IMAGE_NOT_SUPPORTED";
@@ -768,7 +898,7 @@ class ProfileService {
     if (spoofCheck.isSpoof) {
       const error = new Error(
         spoofCheck.reason ||
-          "Screen or spoofed selfie detected. Please take a live selfie of your real face.",
+        "Screen or spoofed selfie detected. Please take a live selfie of your real face.",
       ) as AppError;
       error.statusCode = 400;
       error.code = spoofCheck.code || "SCREEN_SPOOF_DETECTED";

@@ -24,6 +24,7 @@ import {
   eq,
   and,
   or,
+  asc,
   desc,
   notInArray,
   sql,
@@ -328,7 +329,11 @@ export class MatchService {
           isNull(profilePhotos.deletedAt),
         ),
       )
-      .orderBy(desc(profilePhotos.isPrimary), profilePhotos.displayOrder);
+      .orderBy(
+        desc(profilePhotos.isPrimary),
+        asc(profilePhotos.displayOrder),
+        desc(profilePhotos.createdAt),
+      );
 
     // 6. Fetch Education
     const candidateEdu = await db
@@ -449,7 +454,7 @@ export class MatchService {
         bio: prof?.bio || null,
         relationshipStatus: prof?.relationshipStatus || null,
         trustScore,
-        photos: userPhotos.map((p) => ({
+        photos: userPhotos.slice(0, 4).map((p) => ({
           id: p.id,
           url: p.url,
           isPrimary: p.isPrimary,
@@ -1458,7 +1463,11 @@ export class MatchService {
       })
       .from(profilePhotos)
       .where(inArray(profilePhotos.userId, candidateIds))
-      .orderBy(desc(profilePhotos.isPrimary), profilePhotos.displayOrder);
+      .orderBy(
+        desc(profilePhotos.isPrimary),
+        asc(profilePhotos.displayOrder),
+        desc(profilePhotos.createdAt),
+      );
 
     const candidateEdu = await db
       .select()

@@ -119,13 +119,59 @@ export class ProfileController {
       req.body.isPrimary === "true" ||
       req.body.isPrimary === true ||
       req.body.isPrimary === 1;
+    const replaceAll =
+      req.body.replaceAll === "true" ||
+      req.body.replaceAll === true ||
+      req.body.replaceAll === 1;
 
-    const photos = await ProfileService.addPhotos(userId, files, isPrimary);
+    const photos = await ProfileService.addPhotos(
+      userId,
+      files,
+      isPrimary,
+      replaceAll,
+    );
 
     return ApiResponse.success(res, {
       statusCode: 201,
       message: `${photos.length} profile photo${photos.length === 1 ? "" : "s"} uploaded successfully`,
       data: { photos },
+    });
+  }
+
+  static async replacePhoto(req: Request, res: Response): Promise<Response> {
+    const userId = getUserId(req);
+    const photoId = req.params.photoId;
+
+    if (!userId) {
+      return ApiResponse.error(res, {
+        statusCode: 401,
+        message: "Unauthorized: User not authenticated",
+        code: "UNAUTHORIZED",
+      });
+    }
+
+    if (typeof photoId !== "string") {
+      return ApiResponse.error(res, {
+        statusCode: 400,
+        message: "Photo ID is required",
+        code: "PHOTO_ID_REQUIRED",
+      });
+    }
+
+    if (!req.file) {
+      return ApiResponse.error(res, {
+        statusCode: 400,
+        message: "A replacement photo file is required",
+        code: "PHOTO_REQUIRED",
+      });
+    }
+
+    const photo = await ProfileService.replacePhoto(userId, photoId, req.file);
+
+    return ApiResponse.success(res, {
+      statusCode: 200,
+      message: "Profile photo updated successfully",
+      data: { photo },
     });
   }
 
@@ -369,9 +415,9 @@ export class ProfileController {
       req.body.documentNumber,
       documentFile
         ? {
-            buffer: documentFile.buffer,
-            originalName: documentFile.originalname,
-          }
+          buffer: documentFile.buffer,
+          originalName: documentFile.originalname,
+        }
         : undefined,
       selfieFile
         ? { buffer: selfieFile.buffer, originalName: selfieFile.originalname }

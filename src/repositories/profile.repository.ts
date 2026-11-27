@@ -1,4 +1,4 @@
-import { and, count, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../db/index";
 import {
   datingPreferences,
@@ -48,7 +48,14 @@ class ProfileRepository {
     return db
       .select()
       .from(profilePhotos)
-      .where(eq(profilePhotos.userId, userId));
+      .where(
+        and(eq(profilePhotos.userId, userId), isNull(profilePhotos.deletedAt)),
+      )
+      .orderBy(
+        desc(profilePhotos.isPrimary),
+        asc(profilePhotos.displayOrder),
+        desc(profilePhotos.createdAt),
+      );
   }
 
   async findProfilePhotoById(
@@ -59,7 +66,11 @@ class ProfileRepository {
       .select()
       .from(profilePhotos)
       .where(
-        and(eq(profilePhotos.id, photoId), eq(profilePhotos.userId, userId)),
+        and(
+          eq(profilePhotos.id, photoId),
+          eq(profilePhotos.userId, userId),
+          isNull(profilePhotos.deletedAt),
+        ),
       );
 
     return photo;
@@ -100,6 +111,30 @@ class ProfileRepository {
       .update(profilePhotos)
       .set({ isPrimary: false })
       .where(eq(profilePhotos.userId, userId));
+  }
+
+  async normalizeGalleryDisplayOrder(userId: string): Promise<void> {
+    const galleryPhotos = await db
+      .select({ id: profilePhotos.id, displayOrder: profilePhotos.displayOrder })
+      .from(profilePhotos)
+      .where(
+        and(
+          eq(profilePhotos.userId, userId),
+          eq(profilePhotos.isPrimary, false),
+          isNull(profilePhotos.deletedAt),
+        ),
+      )
+      .orderBy(asc(profilePhotos.displayOrder), asc(profilePhotos.createdAt));
+
+    for (const [idx, photo] of galleryPhotos.entries()) {
+      const nextOrder = idx + 1;
+      if (photo.displayOrder !== nextOrder) {
+        await db
+          .update(profilePhotos)
+          .set({ displayOrder: nextOrder })
+          .where(eq(profilePhotos.id, photo.id));
+      }
+    }
   }
 
   async updateProfilePhoto(
@@ -144,7 +179,12 @@ class ProfileRepository {
       const [photoCount] = await transaction
         .select({ count: count() })
         .from(profilePhotos)
-        .where(eq(profilePhotos.userId, userId));
+        .where(
+          and(
+            eq(profilePhotos.userId, userId),
+            isNull(profilePhotos.deletedAt),
+          ),
+        );
 
       let languageCount = 0;
       let interestCount = 0;
@@ -496,7 +536,17 @@ class ProfileRepository {
           createdAt: profilePhotos.createdAt,
         })
         .from(profilePhotos)
-        .where(eq(profilePhotos.userId, userId)),
+        .where(
+          and(
+            eq(profilePhotos.userId, userId),
+            isNull(profilePhotos.deletedAt),
+          ),
+        )
+        .orderBy(
+          desc(profilePhotos.isPrimary),
+          asc(profilePhotos.displayOrder),
+          desc(profilePhotos.createdAt),
+        ),
       db
         .select()
         .from(datingPreferences)
